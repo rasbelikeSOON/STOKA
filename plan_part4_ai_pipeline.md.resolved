@@ -1,0 +1,528 @@
+# Part 4 — AI Pipeline & Insights Engine
+
+---
+
+## 5. AI Pipeline Implementation Plan
+
+### 5.1 Setting Up the Anthropic SDK
+
+```typescript
+// src/lib/ai/anthropic.ts
+import Anthropic from '@anthropic-ai/sdk';
+
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY!,
+});
+
+export default anthropic;
+```
+
+The SDK is used **server-side only** — never imported in client components. The `ANTHROPIC_API_KEY` is a server-only env var (no `NEXT_PUBLIC_` prefix).
+
+---
+
+### 5.2 Dynamic System Prompt
+
+```typescript
+// src/lib/ai/systemPrompt.ts
+
+export async function buildSystemPrompt(
+  business: Business,
+  products: ProductWithVariants[],
+  suppliers: { name: string }[],
+  customers: { name: string }[],
+  locations: Location[]
+): string {
+  return `You are Stoka, an AI inventory management assistant for ${business.name}.
+Business type: ${business.type}. Currency: ${business.currency}.
+
+LOCATIONS:
+${locations.map(l => `- ${l.name}${l.is_default ? ' (default)' : ''}`).join('\n')}
+
+KNOWN PRODUCTS (name | variants | current stock):
+${products.slice(0, 50).map(p =>
+  p.variants.map(v =>
+    `- ${p.name} | ${[v.size, v.scent, v.color, v.flavor].filter(Boolean).join(', ') || 'standard'} | Stock: ${v.stock_quantity} ${v.unit}`
+  ).join('\n')
+).join('\n')}
+
+KNOWN SUPPLIERS: ${suppliers.map(s => s.name).join(', ') || 'None yet'}
+KNOWN CUSTOMERS: ${customers.map(c => c.name).join(', ') || 'None yet'}
+
+YOUR TASK:
+Parse the user's natural language message about inventory operations. Extract structured data. Return ONLY a JSON object matching this exact schema:
+
+{
+  "intent": "log_purchase" | "log_sale" | "stock_check" | "log_adjustment" | "log_return" | "log_transfer" | "create_product" | "price_check" | "general_query",
+  "confidence": 0.0 to 1.0,
+  "needs_clarification": boolean,
+  "clarification_question": "string (only if needs_clarification is true)",
+  "confirmation_message": "Human-readable summary of what you understood",
+  "transaction": {
+    "type": "purchase" | "sale" | "adjustment" | "return" | "transfer",
+    "items": [
+      {
+        "product_name": "string",
+        "variant_descriptor": "string describing size/scent/color/flavor",
+        "quantity": number,
+        "unit_price": number,
+        "total_price": number,
+        "is_new_product": boolean,
+        "matched_product_id": "uuid or null",
+        "matched_variant_id": "uuid or null"
+      }
+    ],
+    "supplier_name": "string or null",
+    "customer_name": "string or null",
+    "location_name": "string or null (defaults to default location)",
+    "total_amount": number,
+    "notes": "string or null"
+  }
+}
+
+RULES:
+1. If a product name closely matches a known product, set is_new_product=false and fill matched_product_id and matched_variant_id. Use fuzzy matching — "Aorta Shampoo lav small" matches "Aorta Shampoo | Lavender, Small".
+2. If no match, set is_new_product=true and matched_*_id=null.
+3. If the message is ambiguous (e.g., "I got some stuff"), set needs_clarification=true and ask a specific question.
+4. For stock_check or price_check, omit the transaction field. Return the data in confirmation_message.
+5. For general_query (greetings, questions about how things work), respond conversationally in confirmation_message. Omit transaction.
+6. Always calculate total_price = quantity * unit_price.
+7. If no location is mentioned, use the default location.
+8. If no supplier/customer is mentioned, set to null.
+
+EXAMPLES:
+User: "I just bought 100 bottles of Aorta Shampoo lavender small size for ₦50 each"
+Response: { "intent": "log_purchase", "confidence": 0.95, "needs_clarification": false, "confirmation_message": "Got it! Logging a purchase of 100 × Aorta Shampoo (Lavender, Small) at ₦50.00 each. Total: ₦5,000.00", "transaction": { "type": "purchase", "items": [{ "product_name": "Aorta Shampoo", "variant_descriptor": "Lavender, Small", "quantity": 100, "unit_price": 50, "total_price": 5000, "is_new_product": false, "matched_product_id": "...", "matched_variant_id": "..." }], "total_amount": 5000 } }
+
+User: "Sold 3 Nivea cream to Mrs Adebayo at ₦500 each"
+Response: { "intent": "log_sale", "confidence": 0.92, ... "transaction": { "type": "sale", "items": [...], "customer_name": "Mrs. Adebayo", "total_amount": 1500 } }
+
+User: "How much paracetamol do I have?"
+Response: { "intent": "stock_check", "confidence": 0.98, "needs_clarification": false, "confirmation_message": "You currently have 5 boxes of Paracetamol 500mg (Box of 100) in Main Store." }
+
+RESPOND WITH ONLY THE JSON OBJECT. NO MARKDOWN. NO EXPLANATION.`;
+}
+```
+
+---
+
+### 5.3 Conversation History Management
+
+```typescript
+// src/lib/ai/conversationHistory.ts
+
+const MAX_MESSAGES = 20;
+const MAX_HISTORY_TOKENS_ESTIMATE = 4000; // ~16,000 chars
+
+export async function getConversationHistory(
+  supabase: SupabaseClient,
+  businessId: string
+): Promise<{ role: 'user' | 'assistant'; content: string }[]> {
+  const { data: messages } = await supabase
+    .from('chat_messages')
+    .select('role, content')
+    .eq('business_id', businessId)
+    .in('role', ['user', 'assistant'])
+    .order('created_at', { ascending: false })
+    .limit(MAX_MESSAGES);
+
+  if (!messages) return [];
+
+  // Reverse to chronological order
+  const ordered = messages.reverse();
+
+  // Truncate if total chars exceed estimate
+  let totalChars = 0;
+  const trimmed = [];
+  for (const msg of ordered.reverse()) {
+    totalChars += msg.content.length;
+    if (totalChars > 16000) break; // ~4000 tokens
+    trimmed.unshift(msg);
+  }
+
+  return trimmed.map(m => ({
+    role: m.role as 'user' | 'assistant',
+    content: m.content,
+  }));
+}
+```
+
+Token management: System prompt ≈ 2,500 tokens. History ≈ 4,000 tokens max. Current message ≈ 100 tokens. Max output ≈ 1,024 tokens. **Total per request: ≈ 7,600 tokens.** Well within `claude-sonnet-4-6` limits.
+
+---
+
+### 5.4 Main Chat API Route
+
+```typescript
+// src/app/api/chat/route.ts (pseudocode structure)
+
+export async function POST(req: Request) {
+  // 1. Auth check
+  const supabase = createServerClient(cookies);
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
+  // 2. Rate limit check
+  const { allowed } = checkRateLimit(user.id, 20, 60); // 20 req/min
+  if (!allowed) return Response.json({ error: 'Rate limited' }, { status: 429 });
+
+  // 3. Parse request
+  const { message, businessId } = await req.json();
+
+  // 4. Role check — all roles can use chat
+  const { authorized } = await checkRole(supabase, businessId, ['owner','manager','staff']);
+  if (!authorized) return Response.json({ error: 'Forbidden' }, { status: 403 });
+
+  // 5. Save user message to DB
+  await supabase.from('chat_messages').insert({
+    business_id: businessId,
+    user_id: user.id,
+    role: 'user',
+    content: message,
+  });
+
+  // 6. Build context
+  const business = await getBusiness(supabase, businessId);
+  const products = await getProductsWithVariants(supabase, businessId);
+  const suppliers = await getSupplierNames(supabase, businessId);
+  const customers = await getCustomerNames(supabase, businessId);
+  const locations = await getLocations(supabase, businessId);
+  const history = await getConversationHistory(supabase, businessId);
+  const systemPrompt = buildSystemPrompt(business, products, suppliers, customers, locations);
+
+  // 7. Call Claude with streaming
+  const stream = anthropic.messages.stream({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 1024,
+    system: systemPrompt,
+    messages: [...history, { role: 'user', content: message }],
+  });
+
+  // 8. Stream response to client
+  const encoder = new TextEncoder();
+  const readable = new ReadableStream({
+    async start(controller) {
+      let fullResponse = '';
+
+      stream.on('text', (text) => {
+        fullResponse += text;
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'text', content: text })}\n\n`));
+      });
+
+      stream.on('end', async () => {
+        // 9. Parse + validate
+        try {
+          const parsed = AIResponseSchema.parse(JSON.parse(fullResponse));
+
+          // 10. Save AI message to DB
+          await supabase.from('chat_messages').insert({
+            business_id: businessId,
+            user_id: user.id,
+            role: 'assistant',
+            content: parsed.confirmation_message,
+            metadata: parsed,
+          });
+
+          controller.enqueue(encoder.encode(
+            `data: ${JSON.stringify({ type: 'complete', data: parsed })}\n\n`
+          ));
+        } catch (parseError) {
+          // Retry once with format enforcement
+          const retryResponse = await retryWithFormatEnforcement(
+            systemPrompt, history, message, fullResponse
+          );
+          controller.enqueue(encoder.encode(
+            `data: ${JSON.stringify({ type: 'complete', data: retryResponse })}\n\n`
+          ));
+        }
+
+        controller.close();
+      });
+
+      stream.on('error', (error) => {
+        controller.enqueue(encoder.encode(
+          `data: ${JSON.stringify({ type: 'error', message: 'AI processing failed' })}\n\n`
+        ));
+        controller.close();
+      });
+    },
+  });
+
+  return new Response(readable, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    },
+  });
+}
+```
+
+---
+
+### 5.5 Confirm Endpoint
+
+```typescript
+// src/app/api/chat/confirm/route.ts
+
+export async function POST(req: Request) {
+  const { businessId, transactionData } = await req.json();
+  // transactionData is the validated AIResponseSchema.transaction object
+
+  const adminDb = createServiceRoleClient(); // bypasses RLS for atomic ops
+
+  // Begin transaction (use Supabase RPC for atomicity)
+  for (const item of transactionData.items) {
+    // 1. Resolve or create product
+    let variantId = item.matched_variant_id;
+
+    if (item.is_new_product) {
+      const product = await adminDb.from('products').insert({
+        business_id: businessId,
+        name: item.product_name,
+      }).select().single();
+
+      const variant = await adminDb.from('product_variants').insert({
+        product_id: product.data.id,
+        business_id: businessId,
+        size: parseVariantAttr(item.variant_descriptor, 'size'),
+        scent: parseVariantAttr(item.variant_descriptor, 'scent'),
+        color: parseVariantAttr(item.variant_descriptor, 'color'),
+        cost_price: transactionData.type === 'purchase' ? item.unit_price : null,
+        selling_price: transactionData.type === 'sale' ? item.unit_price : null,
+      }).select().single();
+
+      variantId = variant.data.id;
+
+      // Create initial stock level
+      await adminDb.from('stock_levels').insert({
+        variant_id: variantId,
+        location_id: defaultLocationId,
+        business_id: businessId,
+        quantity: 0,
+      });
+    }
+
+    // 2. Create transaction
+    const txn = await adminDb.from('transactions').insert({
+      business_id: businessId,
+      location_id: resolvedLocationId,
+      type: transactionData.type,
+      status: 'confirmed',
+      supplier_id: resolvedSupplierId,
+      customer_id: resolvedCustomerId,
+      total_amount: transactionData.total_amount,
+      created_by: userId,
+      source: 'chat',
+    }).select().single();
+
+    // 3. Create transaction items
+    await adminDb.from('transaction_items').insert({
+      transaction_id: txn.data.id,
+      variant_id: variantId,
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      total_price: item.total_price,
+    });
+
+    // 4. Update stock levels
+    const stockDelta = transactionData.type === 'purchase' ? item.quantity :
+                       transactionData.type === 'sale' ? -item.quantity :
+                       item.quantity; // adjustment
+
+    // Use RPC for atomic update with negative check
+    await adminDb.rpc('update_stock_level', {
+      p_variant_id: variantId,
+      p_location_id: resolvedLocationId,
+      p_delta: stockDelta,
+    });
+  }
+
+  // 5. Post-transaction: check for low stock insights
+  await checkLowStockInsights(adminDb, businessId, transactionData.items);
+
+  return Response.json({ success: true, transactionId: txn.data.id });
+}
+```
+
+**Atomic stock update RPC** (added as migration 005):
+
+```sql
+-- 005_stock_update_rpc.sql
+
+CREATE OR REPLACE FUNCTION update_stock_level(
+  p_variant_id UUID,
+  p_location_id UUID,
+  p_delta INTEGER
+) RETURNS INTEGER AS $$
+DECLARE
+  new_quantity INTEGER;
+BEGIN
+  UPDATE stock_levels
+  SET quantity = quantity + p_delta,
+      updated_at = NOW()
+  WHERE variant_id = p_variant_id AND location_id = p_location_id
+  RETURNING quantity INTO new_quantity;
+
+  IF new_quantity < 0 THEN
+    RAISE EXCEPTION 'Insufficient stock: would result in % units', new_quantity;
+  END IF;
+
+  RETURN new_quantity;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+---
+
+### 5.6 Error Handling & Retry Logic
+
+| Error | Detection | Action |
+|-------|-----------|--------|
+| Rate limit (429) | Anthropic SDK throws `RateLimitError` | Exponential backoff: wait 1s, 2s, 4s. Max 3 retries. Then return "AI is busy" |
+| Timeout (>15s) | `AbortController` with 15s timeout | Abort stream, return "Request timed out" |
+| Malformed JSON | `JSON.parse` throws or Zod validation fails | Retry once: append "RESPOND WITH VALID JSON ONLY" to messages. If still fails, return raw text as confirmation_message with `needs_clarification: true` |
+| Network error | SDK throws `APIConnectionError` | Return "Connection error, please try again" |
+| Context too long | SDK throws `BadRequestError` with "context" | Truncate history to 10 messages, retry |
+
+---
+
+### 5.7 Cost Optimization
+
+| Strategy | Savings | Implementation |
+|----------|---------|----------------|
+| Limit system prompt products to 50 | ~30% fewer input tokens | Already specified in prompt builder |
+| Truncate history to 20 messages | Bounded input cost | Already in `conversationHistory.ts` |
+| Use `max_tokens: 1024` | Cap output cost | Already in API call |
+| Cache system prompt per business | Avoid rebuilding identical prompts | In-memory cache with 5-min TTL |
+| Skip AI for exact command matches | Zero API cost for simple queries | Pattern match "check stock [product]" → direct DB query |
+
+**Estimated cost per message**: ~8K input tokens + ~500 output tokens = ~$0.004 per interaction at Sonnet pricing. At 100 messages/day/business with 1,000 businesses = $400/day. This is manageable but should be monitored. Per-business usage caps can be added if needed.
+
+---
+
+## 6. Insights Engine
+
+### 6.1 Post-Transaction Insights (Synchronous)
+
+**Low stock alert** — triggered immediately after `update_stock_level`:
+
+```typescript
+// src/lib/insights/lowStock.ts
+
+export async function checkLowStockInsights(
+  db: SupabaseClient,
+  businessId: string,
+  items: TransactionItem[]
+) {
+  for (const item of items) {
+    const { data: stockLevel } = await db
+      .from('stock_levels')
+      .select('quantity, product_variants(reorder_threshold, products(name))')
+      .eq('variant_id', item.matched_variant_id || item.variant_id)
+      .single();
+
+    if (stockLevel && stockLevel.quantity <= stockLevel.product_variants.reorder_threshold) {
+      // Check if alert already exists (avoid duplicates)
+      const { data: existing } = await db
+        .from('insights_log')
+        .select('id')
+        .eq('business_id', businessId)
+        .eq('type', 'low_stock')
+        .eq('related_variant_id', item.matched_variant_id)
+        .eq('is_read', false)
+        .single();
+
+      if (!existing) {
+        await db.from('insights_log').insert({
+          business_id: businessId,
+          type: 'low_stock',
+          title: `Low Stock: ${stockLevel.product_variants.products.name}`,
+          message: `Only ${stockLevel.quantity} units remaining (threshold: ${stockLevel.product_variants.reorder_threshold})`,
+          severity: stockLevel.quantity === 0 ? 'critical' : 'warning',
+          related_variant_id: item.matched_variant_id,
+        });
+
+        // Push to chat as system message
+        await db.from('chat_messages').insert({
+          business_id: businessId,
+          user_id: '00000000-0000-0000-0000-000000000000', // system user
+          role: 'system',
+          content: `⚠️ Low Stock Alert: ${stockLevel.product_variants.products.name} is down to ${stockLevel.quantity} units.`,
+          metadata: { type: 'insight', insight_type: 'low_stock' },
+        });
+      }
+    }
+  }
+}
+```
+
+### 6.2 Nightly Batch Insights (Cron)
+
+```typescript
+// src/app/api/cron/insights/route.ts
+
+export async function POST(req: Request) {
+  // Auth: verify cron secret
+  if (req.headers.get('Authorization') !== `Bearer ${process.env.CRON_SECRET}`) {
+    return Response.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const db = createServiceRoleClient();
+
+  // Get all active businesses
+  const { data: businesses } = await db.from('businesses').select('id');
+
+  for (const biz of businesses || []) {
+    await evaluateReorderSuggestions(db, biz.id);
+    await evaluateSlowMovers(db, biz.id);
+    await evaluateExpiryWarnings(db, biz.id);
+    await evaluateRevenueMilestones(db, biz.id);
+
+    // Weekly only (run on Sundays)
+    if (new Date().getDay() === 0) {
+      await evaluateTopPerformers(db, biz.id);
+    }
+  }
+
+  return Response.json({ success: true });
+}
+```
+
+### 6.3 Insight Evaluator Details
+
+| Type | Logic | SQL Core |
+|------|-------|----------|
+| **Reorder suggestion** | 14-day avg daily sales × 7 > current stock | `SELECT variant_id, SUM(quantity)/14.0 AS daily_rate FROM transaction_items ti JOIN transactions t ON ti.transaction_id=t.id WHERE t.type='sale' AND t.created_at > NOW()-INTERVAL '14 days' GROUP BY variant_id HAVING SUM(quantity)/14.0 * 7 > (SELECT quantity FROM stock_levels WHERE variant_id=ti.variant_id)` |
+| **Slow mover** | No sales in 21 days + qty > 10 | `SELECT pv.id FROM product_variants pv JOIN stock_levels sl ON pv.id=sl.variant_id WHERE sl.quantity > 10 AND pv.id NOT IN (SELECT variant_id FROM transaction_items ti JOIN transactions t ON ti.transaction_id=t.id WHERE t.type='sale' AND t.created_at > NOW()-INTERVAL '21 days')` |
+| **Expiry warning** | expiry_date within 14 days | `SELECT * FROM product_variants WHERE expiry_date IS NOT NULL AND expiry_date <= NOW() + INTERVAL '14 days' AND expiry_date > NOW()` |
+| **Revenue milestone** | This week revenue ≥ 1.2 × last week revenue | Compare `SUM(total_amount)` for current vs previous 7-day windows |
+| **Top performer** | Top 5 by revenue this week | `SELECT product_name, SUM(total_price) FROM transaction_items ti JOIN transactions t GROUP BY product_name ORDER BY SUM(total_price) DESC LIMIT 5` |
+
+### 6.4 Pushing Insights to Chat
+
+When an insight is created in `insights_log`, a corresponding row is inserted into `chat_messages` with `role: 'system'`. Because `chat_messages` has Realtime enabled (migration 003), all connected clients receive the new message via their Supabase subscription.
+
+Chat UI renders system messages differently:
+- **Low stock / Expiry**: amber background, warning icon
+- **Revenue milestone / Top performer**: teal/green background, trending-up icon
+- **Reorder / Slow mover**: blue background, info icon
+
+### 6.5 Environment Variables for Insights
+
+```env
+CRON_SECRET=your-random-secret-string-here
+```
+
+Add to `vercel.json`:
+
+```json
+{
+  "crons": [
+    {
+      "path": "/api/cron/insights",
+      "schedule": "0 2 * * *"
+    }
+  ]
+}
+```

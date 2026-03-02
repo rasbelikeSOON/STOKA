@@ -1,0 +1,399 @@
+# Part 8 — Deployment, Performance, Security, Risk, Checklist & Post-MVP
+
+---
+
+## 9. Deployment Plan
+
+### 9.1 Supabase Project Setup
+
+Create three projects in Supabase Dashboard:
+- `stoka-dev` — local/development
+- `stoka-staging` — pre-production testing
+- `stoka-prod` — production
+
+For each project:
+1. Create project in Supabase Dashboard → New Project
+2. Save the project URL and anon key
+3. Save the service role key (keep secret)
+4. Run migrations: `supabase db push --db-url postgresql://...`
+
+### 9.2 Vercel Project Setup
+
+```bash
+# Install Vercel CLI
+npm install -g vercel
+
+# Link project
+vercel link
+
+# Set environment variables per environment
+vercel env add NEXT_PUBLIC_SUPABASE_URL production
+vercel env add NEXT_PUBLIC_SUPABASE_ANON_KEY production
+vercel env add SUPABASE_SERVICE_ROLE_KEY production
+vercel env add ANTHROPIC_API_KEY production
+vercel env add CRON_SECRET production
+vercel env add NEXT_PUBLIC_APP_URL production
+```
+
+### 9.3 Environment Variables Per Environment
+
+| Variable | Dev | Staging | Prod |
+|----------|-----|---------|------|
+| `NEXT_PUBLIC_SUPABASE_URL` | dev URL | staging URL | prod URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | dev key | staging key | prod key |
+| `SUPABASE_SERVICE_ROLE_KEY` | dev key | staging key | prod key |
+| `ANTHROPIC_API_KEY` | test key | test key | prod key |
+| `CRON_SECRET` | random | random | random |
+| `NEXT_PUBLIC_APP_URL` | `http://localhost:3000` | staging domain | prod domain |
+
+### 9.4 Database Migration Workflow
+
+```
+Developer → push to feature branch → Vercel Preview Deploy (uses staging Supabase)
+Merge to main → Vercel Production Deploy → manually run migrations on prod Supabase
+```
+
+Migration steps for production:
+1. Test migration on staging first
+2. Back up production database (Supabase Dashboard → Settings → Database → Backups)
+3. Run migration: `supabase db push --db-url <prod-connection-string>`
+4. Verify: spot-check key tables, run smoke tests
+5. If failure: run rollback SQL from migration plan (Part 3)
+
+### 9.5 CI/CD Pipeline
+
+Vercel's built-in GitHub integration:
+- Push to any branch → Preview deployment
+- Push to `main` → Production deployment
+- Build command: `npm run build`
+- Output directory: `.next`
+- Node.js version: 18.x
+
+Add a `vercel.json` for cron and headers:
+
+```json
+{
+  "crons": [
+    { "path": "/api/cron/insights", "schedule": "0 2 * * *" }
+  ],
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "DENY" }
+      ]
+    }
+  ]
+}
+```
+
+### 9.6 Production Checklist Before Go-Live
+
+- [ ] All env vars set in Vercel production
+- [ ] Production Supabase project created with all migrations
+- [ ] RLS policies verified (manual test: try accessing another tenant's data)
+- [ ] Custom domain configured in Vercel
+- [ ] SSL certificate active (automatic via Vercel)
+- [ ] DNS propagation complete
+- [ ] Anthropic API key has sufficient credits
+- [ ] Cron job firing correctly (check Vercel Logs)
+- [ ] Error monitoring active (Vercel Analytics at minimum)
+
+---
+
+## 10. Performance Plan
+
+### 10.1 Next.js Caching Strategy
+
+| Route Type | Caching | Revalidation |
+|------------|---------|--------------|
+| Landing page | Static (ISR) | Revalidate every 3600s |
+| Auth pages | Static | N/A |
+| Dashboard overview | Dynamic | No cache (real-time data) |
+| Product list | Dynamic | No cache |
+| Chat | Dynamic | No cache (real-time) |
+| Terms / Privacy | Static | Revalidate on deploy |
+
+```typescript
+// In server components that should revalidate:
+export const revalidate = 3600; // Landing page
+
+// Dynamic pages:
+export const dynamic = 'force-dynamic'; // Dashboard, Chat
+```
+
+### 10.2 Supabase Query Optimization
+
+**Indexes** (already in migration 001):
+- `idx_transactions_business` — composite on `(business_id, created_at DESC)` for paginated lists
+- `idx_stock_levels_business` — for inventory queries
+- `idx_chat_messages_business` — for chat history
+- `idx_insights_log_unread` — partial index for unread count badge
+
+**Query patterns:**
+- Use `.select()` with explicit columns instead of `*` when possible
+- Use `.limit()` on all list queries
+- Use cursor-based pagination (not offset) for transactions and chat history
+
+**RLS performance:**
+- `get_user_business_ids()` is `STABLE` and returns ≤ 3 rows per user → minimal overhead
+- The function is `SECURITY DEFINER` to avoid recursive RLS on `business_members`
+
+### 10.3 Claude API Response Targets
+
+- Target: < 3 seconds end-to-end (message sent → confirmation card rendered)
+- Breakdown: ~200ms API overhead + ~1-2s Claude inference + ~200ms DB writes + ~100ms rendering
+- Streaming mitigates perceived latency — first text appears within 500ms
+
+### 10.4 Bundle Size Targets
+
+| Metric | Target |
+|--------|--------|
+| First Load JS | < 150 KB (gzipped) |
+| Largest page JS | < 250 KB (gzipped) |
+| Recharts (charts only) | Tree-shake to < 80 KB |
+| Total transfer on first visit | < 500 KB |
+
+Optimization tactics:
+- Dynamic import Recharts: `const Chart = dynamic(() => import('../RevenueChart'), { ssr: false })`
+- Dynamic import TanStack Table on list pages
+- Use `next/image` for all images with automatic WebP conversion
+
+### 10.5 Image Optimization
+
+- Product images: upload to Supabase Storage, serve via Supabase CDN
+- Landing page images: use `next/image` with remote patterns configured
+- Logo/icons: inline SVG or Lucide React (no image requests)
+
+---
+
+## 11. Security Plan
+
+### 11.1 RLS Policy Review Checklist
+
+Before every deployment:
+- [ ] Every table has RLS enabled (`ALTER TABLE ... ENABLE ROW LEVEL SECURITY`)
+- [ ] Every table has at least a SELECT policy
+- [ ] No policy uses `USING (true)` in production (public access)
+- [ ] Test: create two businesses, verify Business A cannot read Business B's data
+- [ ] Test: service role client can bypass RLS (needed for cron jobs)
+- [ ] Test: anon key cannot access any data without authentication
+
+### 11.2 API Input Validation
+
+Every API route follows this pattern:
+
+```typescript
+// 1. Auth check
+const user = await getUser(supabase);
+if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
+// 2. Parse + validate body
+const body = await req.json();
+const result = myZodSchema.safeParse(body);
+if (!result.success) {
+  return Response.json({ error: 'Validation failed', details: result.error.flatten() }, { status: 400 });
+}
+
+// 3. Role check
+const { authorized } = await checkRole(supabase, result.data.businessId, requiredRoles);
+if (!authorized) return Response.json({ error: 'Forbidden' }, { status: 403 });
+
+// 4. Business logic
+```
+
+### 11.3 Rate Limiting
+
+```typescript
+// src/lib/rateLimit.ts
+const rateLimits = new Map<string, { count: number; resetAt: number }>();
+
+export function checkRateLimit(userId: string, maxRequests: number, windowSeconds: number) {
+  const now = Date.now();
+  const key = `${userId}`;
+  const entry = rateLimits.get(key);
+
+  if (!entry || now > entry.resetAt) {
+    rateLimits.set(key, { count: 1, resetAt: now + windowSeconds * 1000 });
+    return { allowed: true, remaining: maxRequests - 1 };
+  }
+
+  if (entry.count >= maxRequests) {
+    return { allowed: false, remaining: 0, retryAfter: Math.ceil((entry.resetAt - now) / 1000) };
+  }
+
+  entry.count++;
+  return { allowed: true, remaining: maxRequests - entry.count };
+}
+```
+
+Applied to:
+- `/api/chat`: 20 requests/minute/user
+- `/api/auth/signup`: 5 requests/minute/IP
+- `/api/auth/signin`: 10 requests/minute/IP
+
+### 11.4 CORS Configuration
+
+Next.js API routes default to same-origin. No CORS headers needed unless a public API is added (post-MVP).
+
+### 11.5 Secret Management
+
+- All secrets stored in Vercel environment variables (encrypted at rest)
+- `SUPABASE_SERVICE_ROLE_KEY` and `ANTHROPIC_API_KEY` are never prefixed with `NEXT_PUBLIC_`
+- `.env.local` in `.gitignore`
+- No secrets in client-side code
+
+### 11.6 Data Encryption
+
+- In transit: HTTPS enforced by Vercel (automatic SSL)
+- At rest: Supabase encrypts all data at rest (AES-256)
+- No additional application-level encryption needed for MVP
+
+---
+
+## 12. Risk Register
+
+| # | Risk | Likelihood | Impact | Mitigation | Contingency |
+|---|------|-----------|--------|------------|-------------|
+| 1 | Claude misparses inventory message (wrong qty/product) | Medium | High | Confirmation card shows parsed data before DB write. User must explicitly confirm. Few-shot examples in prompt improve accuracy. | Add "Report incorrect parsing" button → logs for prompt improvement. Allow manual edit of parsed data before confirm. |
+| 2 | Claude API costs unsustainable at scale | Low | High | Limit system prompt to 50 products. Cap history to 20 messages. `max_tokens: 1024`. Cache repeated queries. | Implement per-business daily message caps. Downgrade to Haiku for stock checks. Add direct-command shortcuts that bypass AI. |
+| 3 | Supabase RLS misconfiguration leaking cross-tenant data | Low | Critical | Defense-in-depth: RLS + app-level `WHERE business_id`. Pre-deployment RLS test checklist. `get_user_business_ids()` function for consistency. | Immediate hotfix deploy. Audit all table policies. Notify affected users per data breach protocol. |
+| 4 | Stock going negative due to race conditions | Medium | Medium | `SELECT ... FOR UPDATE` via RPC function. Reject if result < 0. | Nightly cron to flag negative stock levels and alert. Allow manual correction via adjustment. |
+| 5 | User abandonment during onboarding | Medium | Medium | 3-step wizard (not 5+). Step 3 is the "aha moment" — real AI interaction. Progress indicator. Pre-filled suggestion message. | Follow-up email sequence (Day 1, 3, 7) with tips. In-app "Continue setup" banner. |
+| 6 | Competitor replication | Medium | Low | Speed to market. Deep integration with African payment/messaging (WhatsApp). Community building. Brand trust. | Accelerate unique features (voice input, receipt scanning). Focus on retention over acquisition. |
+| 7 | Offline sync conflicts | Low (MVP) | Medium | MVP: network-required with offline banner. No offline data mutation. | Phase 2: implement last-write-wins sync with conflict log for manual resolution. |
+
+---
+
+## 13. MVP Launch Checklist
+
+### Auth & Onboarding
+- [ ] Sign up with email/password creates user
+- [ ] Sign in works and redirects to `/app/chat`
+- [ ] Forgot/reset password flow works end-to-end
+- [ ] Sign out clears session across tabs
+- [ ] Unauthenticated users redirected to `/signin`
+- [ ] Onboarding wizard: all 3 steps complete successfully
+- [ ] Onboarding creates business + member + location + first transaction
+- [ ] Invitation flow: send invite → email received → accept → member added
+
+### Chat Interface
+- [ ] User can type and send messages
+- [ ] AI parses purchase intent correctly (test 10 variations)
+- [ ] AI parses sale intent correctly (test 10 variations)
+- [ ] AI handles stock check correctly
+- [ ] AI handles adjustment correctly
+- [ ] Confirmation card renders with correct data
+- [ ] Confirm button writes transaction + updates stock
+- [ ] Cancel button does nothing to DB
+- [ ] Corrections work ("no, it was 200") → new card
+- [ ] Quick-action pills pre-fill the input
+- [ ] Chat history persists across reloads
+- [ ] Conversation history sidebar shows grouped sessions (desktop)
+- [ ] Streaming works — text appears progressively
+- [ ] Error states display for API failures
+- [ ] Rate limiting enforced (20/min)
+
+### Dashboard
+- [ ] KPI cards show correct values
+- [ ] Revenue chart renders with data
+- [ ] Sales breakdown donut chart works
+- [ ] Purchase analysis page works
+- [ ] Profit page works (owner only)
+- [ ] Date range filter updates all views
+- [ ] CSV export downloads valid file
+- [ ] Dark mode on desktop, light on mobile
+- [ ] Empty state shown for new accounts
+
+### Products & Inventory
+- [ ] Product list: search, filter, paginate
+- [ ] Product create + edit + delete
+- [ ] Variant create + edit + delete
+- [ ] Inventory overview shows all stock levels
+- [ ] Low stock page filters correctly
+- [ ] Adjustment history displays
+
+### Transactions
+- [ ] Transaction list paginates
+- [ ] Transaction detail shows line items
+- [ ] Manual transaction entry works
+- [ ] Status badges render correctly
+
+### Contacts
+- [ ] Suppliers: list, create, view, edit, delete
+- [ ] Customers: list, create, view, edit, delete
+
+### Settings
+- [ ] Business info updates
+- [ ] Locations: add/edit/delete
+- [ ] Team: view members, invite, update role, remove
+- [ ] Account: update profile
+
+### Insights
+- [ ] Low stock alert generates after sale
+- [ ] Insight appears in insight log
+- [ ] Insight pushes to chat stream
+- [ ] Nightly cron runs without errors
+
+### Role Enforcement
+- [ ] Staff: can use chat, view products — cannot access dashboard, delete, settings
+- [ ] Manager: can use chat, view dashboard (not profit), manage products — cannot delete, manage team
+- [ ] Owner: full access
+
+### Mobile & PWA
+- [ ] All pages responsive at 320px, 375px, 768px, 1024px, 1280px
+- [ ] Bottom nav visible on mobile, hidden on desktop
+- [ ] Sidebar visible on desktop, drawer on mobile
+- [ ] PWA installs on Android Chrome
+- [ ] PWA installs on iOS Safari (add to home screen)
+- [ ] App icon renders correctly
+
+### Public Pages
+- [ ] Landing page renders (all sections)
+- [ ] Pricing page renders
+- [ ] Terms page renders
+- [ ] Privacy page renders
+- [ ] SEO: title tags, meta descriptions on every page
+
+### Performance
+- [ ] Lighthouse Performance > 90
+- [ ] Lighthouse Accessibility > 95
+- [ ] Lighthouse SEO > 95
+- [ ] First Load JS < 150 KB gzipped
+- [ ] Chat response < 3 seconds end-to-end
+
+### Security
+- [ ] RLS verified: Business A cannot read Business B's data
+- [ ] All API routes validate input with Zod
+- [ ] Rate limiting active on chat endpoint
+- [ ] No secrets exposed in client bundle
+- [ ] HTTPS enforced
+
+### Infrastructure
+- [ ] Production Supabase project running
+- [ ] All migrations applied to production
+- [ ] Vercel production deploy successful
+- [ ] Custom domain configured + SSL active
+- [ ] Cron job scheduled and verified
+- [ ] Error monitoring active
+
+---
+
+## 14. Post-MVP Roadmap
+
+| Feature | Phase | Estimate | Dependencies |
+|---------|-------|----------|--------------|
+| Voice input | 2 | 2 weeks | Web Speech API or Whisper API. Transcribe → pipe to existing chat pipeline. |
+| WhatsApp integration | 2 | 3 weeks | WhatsApp Business API (via Twilio or Meta). Webhook receives messages → same Claude pipeline → respond via API. |
+| Receipt photo scanning (OCR) | 2 | 3 weeks | Claude Vision (multimodal). Upload photo → Claude extracts line items → same confirmation card flow. |
+| Barcode scanning | 2 | 2 weeks | `html5-qrcode` library. Scan → lookup product by SKU → show stock or log transaction. |
+| Multi-currency support | 2 | 1 week | Add `exchange_rates` table. Convert displays based on business currency. |
+| Accounting sync (QuickBooks, Wave) | 3 | 4 weeks | OAuth integration. Map Stoka transactions to journal entries. Periodic sync via cron. |
+| Native mobile apps | 3 | 8 weeks | React Native or Capacitor wrapping the PWA with push notifications. |
+| Public API for third-party integrations | 3 | 3 weeks | REST API with API key auth. OpenAPI spec. Rate limiting per key. |
+| Offline-first with sync | 2 | 4 weeks | IndexedDB for local queue. Background sync on reconnect. Last-write-wins conflict resolution. |
+| Advanced analytics (predictive) | 3 | 3 weeks | Use Claude to analyze 90-day trends and predict stockouts. Weekly AI report delivered via email. |
+
+**Phase 2 target**: 4–6 weeks post-launch, driven by user feedback.
+**Phase 3 target**: 3–4 months post-launch, driven by revenue traction.

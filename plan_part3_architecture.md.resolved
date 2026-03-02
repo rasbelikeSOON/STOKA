@@ -1,0 +1,212 @@
+# Part 3 — Technical Architecture Decisions & Database Migration Plan
+
+---
+
+## 3. Technical Architecture Decisions
+
+### 3.1 App Router vs Pages Router
+
+| Option | Pros | Cons |
+|--------|------|------|
+| App Router | Server components, streaming, nested layouts, route groups, parallel routes | Newer patterns, some library compatibility quirks |
+| Pages Router | Mature ecosystem, simpler mental model | No server components, no streaming, no nested layouts |
+
+**Chosen: App Router**
+
+Why: Stoka requires nested layouts (app shell wrapping all pages), server-side data fetching for dashboard KPIs (no client-side waterfall), and streaming for the chat interface. The App Router's `loading.tsx` and `error.tsx` conventions eliminate boilerplate for loading/error states. Route groups `(auth)`, `(app)`, `(public)` keep the file tree organized. The trade-off of a slightly steeper learning curve is worth the architectural benefits.
+
+---
+
+### 3.2 Server Components vs Client Components Strategy
+
+**Rule**: Default to Server Components. Opt into Client Components (`'use client'`) only when the component needs:
+- Browser APIs (event handlers, `useState`, `useEffect`)
+- Third-party libraries that require hooks (Zustand, React Hook Form, Framer Motion, Recharts)
+- Supabase Realtime subscriptions
+
+**Server Component examples**: Dashboard pages (fetch data, render HTML), product list page (fetch from Supabase, render TanStack Table with server data).
+
+**Client Component examples**: `ChatInput` (user interaction), `ConfirmationCard` (stateful confirm/cancel), `DateRangeFilter` (interactive filter), `Sidebar` (mobile toggle state).
+
+**Pattern**: Server component fetches data → passes as props to client component for interactivity.
+
+```
+// page.tsx (server)
+const products = await supabase.from('products').select('*');
+return <ProductTable data={products} />;  // ProductTable is 'use client'
+```
+
+---
+
+### 3.3 Supabase RLS vs Application-Level Data Isolation
+
+| Option | Pros | Cons |
+|--------|------|------|
+| RLS only | Zero-trust, database-enforced, impossible to leak data | Complex policies, performance with recursive CTEs, harder to debug |
+| App-level only | Simpler queries, easier debugging | One missed WHERE clause = cross-tenant data leak |
+| RLS + App-level | Defense in depth | Slight redundancy |
+
+**Chosen: RLS + App-level filtering (defense in depth)**
+
+Why: Multi-tenant cross-data leakage is existential for a B2B SaaS. RLS policies enforce isolation at the database level — even if application code has a bug (missing `WHERE business_id = ...`), the data cannot leak. Application-level filtering is added for query clarity and to avoid relying solely on an opaque security layer.
+
+The `get_user_business_ids()` function is `SECURITY DEFINER` to avoid recursive RLS checks. Performance is acceptable because `business_members` is a small table per user (typically 1–3 rows).
+
+---
+
+### 3.4 Streaming vs Non-Streaming Claude API Responses
+
+| Option | Pros | Cons |
+|--------|------|------|
+| Non-streaming | Simple implementation, full JSON available immediately | User stares at blank screen for 2–5 seconds |
+| Streaming | Perceived performance — text appears immediately | Must buffer full response for JSON parsing, more complex |
+
+**Chosen: Streaming with buffered JSON extraction**
+
+Why: The chat experience must feel instant. A 3–5 second wait with no feedback is unacceptable for a primary interface. Streaming the `confirmation_message` text provides immediate feedback. The full JSON is extracted after streaming completes.
+
+**Implementation**: Claude streams the response. The API route uses `ReadableStream` to forward text chunks to the client. On the client, the streaming text renders progressively in a chat bubble. Once the stream completes, the full response is parsed as JSON, validated with Zod, and the confirmation card renders.
+
+Trade-off: If Claude's response is malformed JSON, the user sees the streaming text but the confirmation card fails to render. Mitigation: retry once with a format-enforcement message.
+
+---
+
+### 3.5 Optimistic UI Strategy for Chat
+
+**Pattern**: When the user sends a message:
+1. **Immediately** add the user message to the local Zustand store and render it
+2. **Immediately** show a typing indicator below the last message
+3. **Send** the API request
+4. **Stream** the AI response — render progressively, replacing the typing indicator
+5. **On completion** — render the confirmation card (if applicable)
+6. **On error** — show error toast, add a "Failed to process — tap to retry" message
+
+The user message is written to `chat_messages` table server-side before calling Claude. If Claude fails, the user message is still persisted.
+
+No rollback needed: the user message is always valid. Only the AI response can fail, and that's handled with the retry/error UI.
+
+---
+
+### 3.6 PWA Caching Strategy
+
+**Strategy: Network-first with offline fallback**
+
+- `next-pwa` generates a service worker
+- HTML pages: network-first — always try server, fall back to cache
+- Static assets (JS, CSS, images): cache-first — serve from cache, update in background
+- API calls: network-only — no caching of API responses (data must be fresh)
+- Offline: show cached app shell with "You're offline — data will sync when reconnected" banner
+
+**Why not offline-first with sync?** Offline sync with conflict resolution is a Phase 2 feature. For MVP, the app requires connectivity. The PWA's value at launch is installability (home screen icon, no browser chrome) rather than offline functionality.
+
+---
+
+### 3.7 Multi-Tenancy Data Model
+
+| Option | Pros | Cons |
+|--------|------|------|
+| Shared database, shared schema, `business_id` column | Simple, low cost, scalable to thousands of tenants | Must never forget WHERE clause, index bloat |
+| Schema-per-tenant | Strong isolation | Complex migration management, not supported by Supabase |
+| Database-per-tenant | Maximum isolation | Expensive, complex deployment |
+
+**Chosen: Shared schema with `business_id` column + RLS**
+
+Why: This is the standard for SaaS products at Stoka's scale (targeting thousands of SMBs, not enterprise). Supabase does not support schema-per-tenant. The `business_id` column on every table + RLS provides sufficient isolation. Indexes on `business_id` ensure query performance is O(log n) not O(n).
+
+A user can belong to multiple businesses (tracked via `business_members`). The app shell stores the "active business" in Zustand. Switching businesses is possible but not MVP — initially, users see their first business.
+
+---
+
+## 4. Database Migration Plan
+
+### Migration Order and Safety
+
+| Order | Migration | Description | Safe for prod? | Rollback |
+|-------|-----------|-------------|----------------|----------|
+| 001 | `001_core_schema.sql` | All tables, indexes | ✓ (additive) | `DROP TABLE` in reverse dependency order |
+| 002 | `002_rls_policies.sql` | All RLS policies + helper function | ✓ (additive) | `DROP POLICY` for each; `DROP FUNCTION get_user_business_ids` |
+| 003 | `003_realtime.sql` | Enable Realtime on `chat_messages`, `insights_log` | ✓ (additive) | Remove tables from publication |
+| 004 | `004_updated_at_trigger.sql` | Auto-update `updated_at` columns | ✓ (additive) | `DROP TRIGGER` + `DROP FUNCTION` |
+
+### Migration 003 — Realtime
+
+```sql
+-- 003_realtime.sql
+
+-- Enable Realtime for specific tables
+ALTER PUBLICATION supabase_realtime ADD TABLE chat_messages;
+ALTER PUBLICATION supabase_realtime ADD TABLE insights_log;
+ALTER PUBLICATION supabase_realtime ADD TABLE stock_levels;
+
+-- Full replica identity for Realtime to work correctly
+ALTER TABLE chat_messages REPLICA IDENTITY FULL;
+ALTER TABLE insights_log REPLICA IDENTITY FULL;
+ALTER TABLE stock_levels REPLICA IDENTITY FULL;
+```
+
+### Migration 004 — Updated-at Trigger
+
+```sql
+-- 004_updated_at_trigger.sql
+
+CREATE OR REPLACE FUNCTION update_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON businesses
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON products
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON product_variants
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON stock_levels
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+```
+
+### Seed Data for Development
+
+```sql
+-- seed.sql — run in development only
+
+-- Test business
+INSERT INTO businesses (id, name, type, currency) VALUES
+  ('b0000000-0000-0000-0000-000000000001', 'Demo Beauty Store', 'beauty', 'NGN');
+
+-- Test location
+INSERT INTO locations (id, business_id, name, is_default) VALUES
+  ('l0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000001', 'Main Store', true);
+
+-- Test products
+INSERT INTO products (id, business_id, name, category) VALUES
+  ('p0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000001', 'Aorta Shampoo', 'Hair Care'),
+  ('p0000000-0000-0000-0000-000000000002', 'b0000000-0000-0000-0000-000000000001', 'Nivea Body Cream', 'Skin Care'),
+  ('p0000000-0000-0000-0000-000000000003', 'b0000000-0000-0000-0000-000000000001', 'Paracetamol 500mg', 'Pharmaceuticals');
+
+-- Test variants
+INSERT INTO product_variants (id, product_id, business_id, size, scent, cost_price, selling_price, reorder_threshold) VALUES
+  ('v0000000-0000-0000-0000-000000000001', 'p0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000001', 'Small', 'Lavender', 50.00, 80.00, 15),
+  ('v0000000-0000-0000-0000-000000000002', 'p0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000001', 'Large', 'Lavender', 100.00, 150.00, 10),
+  ('v0000000-0000-0000-0000-000000000003', 'p0000000-0000-0000-0000-000000000002', 'b0000000-0000-0000-0000-000000000001', '200ml', NULL, 300.00, 450.00, 20),
+  ('v0000000-0000-0000-0000-000000000004', 'p0000000-0000-0000-0000-000000000003', 'b0000000-0000-0000-0000-000000000001', 'Box of 100', NULL, 200.00, 350.00, 25);
+
+-- Test stock levels
+INSERT INTO stock_levels (variant_id, location_id, business_id, quantity) VALUES
+  ('v0000000-0000-0000-0000-000000000001', 'l0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000001', 50),
+  ('v0000000-0000-0000-0000-000000000002', 'l0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000001', 8),
+  ('v0000000-0000-0000-0000-000000000003', 'l0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000001', 30),
+  ('v0000000-0000-0000-0000-000000000004', 'l0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000001', 5);
+
+-- Test supplier
+INSERT INTO suppliers (id, business_id, name, phone) VALUES
+  ('s0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000001', 'Lagos Hair Supplies Ltd', '+234-801-234-5678');
+
+-- Test customer
+INSERT INTO customers (id, business_id, name, phone) VALUES
+  ('c0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000001', 'Mrs. Adebayo', '+234-802-345-6789');
+```
+
+After seeding, create a test user in Supabase Auth dashboard and manually insert a `business_members` row linking that user to the demo business with `role = 'owner'`.

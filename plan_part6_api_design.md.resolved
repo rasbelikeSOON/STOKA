@@ -1,0 +1,302 @@
+# Part 6 — Full API Design
+
+---
+
+## 8. API Design
+
+Every API route documented with method, path, request/response, auth, roles, and errors.
+
+### Auth Routes
+
+| Method | Path | Auth | Roles | Purpose |
+|--------|------|------|-------|---------|
+| POST | `/api/auth/signup` | None | Any | Create account |
+| POST | `/api/auth/signin` | None | Any | Sign in |
+| POST | `/api/auth/forgot-password` | None | Any | Request reset |
+| POST | `/api/auth/reset-password` | None | Any | Set new password |
+| POST | `/api/auth/signout` | Yes | Any | Sign out |
+
+**POST `/api/auth/signup`**
+```
+Request:  { email: string, password: string, full_name: string }
+Response: { user: User } | { error: string }
+Errors:   400 (validation), 409 (email exists), 500 (Supabase error)
+```
+
+**POST `/api/auth/signin`**
+```
+Request:  { email: string, password: string }
+Response: { user: User, session: Session } | { error: string }
+Errors:   400 (validation), 401 (invalid credentials)
+```
+
+---
+
+### Onboarding
+
+| Method | Path | Auth | Roles | Purpose |
+|--------|------|------|-------|---------|
+| POST | `/api/onboarding` | Yes | Any | Create business + member + location |
+
+**POST `/api/onboarding`**
+```
+Request: {
+  business_name: string,
+  business_type: "retail"|"pharmacy"|"restaurant"|"wholesale"|"beauty"|"other",
+  currency: string (3 chars),
+  location_name: string,
+  location_address?: string
+}
+Response: { business: Business, location: Location }
+Errors: 400 (validation), 409 (user already has a business)
+```
+
+---
+
+### Chat
+
+| Method | Path | Auth | Roles | Purpose |
+|--------|------|------|-------|---------|
+| POST | `/api/chat` | Yes | owner, manager, staff | Send message, get AI response (SSE stream) |
+| POST | `/api/chat/confirm` | Yes | owner, manager, staff | Confirm parsed transaction |
+| GET | `/api/chat/history` | Yes | owner, manager, staff | Fetch chat history |
+
+**POST `/api/chat`**
+```
+Request:  { message: string, businessId: string }
+Response: SSE stream with events:
+  { type: "text", content: string }       -> streaming text chunk
+  { type: "complete", data: AIResponse }  -> full parsed response
+  { type: "error", message: string }      -> error
+Errors:   401, 403, 429 (rate limit), 500
+```
+
+**POST `/api/chat/confirm`**
+```
+Request: {
+  businessId: string,
+  transactionData: {
+    type: string,
+    items: TransactionItem[],
+    supplier_name?: string,
+    customer_name?: string,
+    location_name?: string,
+    total_amount: number
+  }
+}
+Response: { success: true, transactionId: string }
+Errors: 400 (validation), 401, 403, 409 (insufficient stock), 500
+```
+
+**GET `/api/chat/history`**
+```
+Query:    ?businessId=uuid&limit=50&cursor=uuid
+Response: { data: ChatMessage[], next_cursor: string|null }
+Errors:   401, 403
+```
+
+---
+
+### Dashboard
+
+| Method | Path | Auth | Roles | Purpose |
+|--------|------|------|-------|---------|
+| GET | `/api/dashboard/overview` | Yes | owner, manager | KPI summary |
+| GET | `/api/dashboard/sales` | Yes | owner, manager | Sales data |
+| GET | `/api/dashboard/purchases` | Yes | owner, manager | Purchase data |
+| GET | `/api/dashboard/profit` | Yes | owner | Profit data (financials) |
+
+**GET `/api/dashboard/overview`**
+```
+Query:    ?businessId=uuid&from=date&to=date
+Response: {
+  total_revenue: number,
+  total_purchases: number,
+  gross_profit: number,
+  profit_margin: number,
+  low_stock_count: number,
+  total_products: number,
+  total_transactions: number,
+  revenue_trend: { date: string, amount: number }[]
+}
+Errors: 401, 403 (staff blocked)
+```
+
+**GET `/api/dashboard/sales`**
+```
+Query:    ?businessId=uuid&from=date&to=date&groupBy=day|week|month
+Response: {
+  timeline: { date: string, amount: number }[],
+  by_category: { category: string, amount: number }[],
+  top_products: { name: string, quantity: number, revenue: number }[]
+}
+```
+
+**GET `/api/dashboard/purchases`**
+```
+Query:    ?businessId=uuid&from=date&to=date
+Response: {
+  timeline: { date: string, amount: number }[],
+  by_supplier: { supplier: string, amount: number, count: number }[]
+}
+```
+
+**GET `/api/dashboard/profit`**
+```
+Query:    ?businessId=uuid&from=date&to=date
+Response: {
+  overall: { revenue: number, cost: number, profit: number, margin: number },
+  by_product: { name: string, revenue: number, cost: number, profit: number, margin: number }[],
+  trend: { date: string, profit: number }[]
+}
+Errors: 401, 403 (only owner)
+```
+
+---
+
+### Products
+
+| Method | Path | Auth | Roles | Purpose |
+|--------|------|------|-------|---------|
+| GET | `/api/products` | Yes | all | List products |
+| POST | `/api/products` | Yes | owner, manager | Create product |
+| GET | `/api/products/[id]` | Yes | all | Get product detail |
+| PUT | `/api/products/[id]` | Yes | owner, manager | Update product |
+| DELETE | `/api/products/[id]` | Yes | owner | Delete product |
+| GET | `/api/products/[id]/variants` | Yes | all | List variants |
+| POST | `/api/products/[id]/variants` | Yes | owner, manager | Create variant |
+| PUT | `/api/products/[id]/variants/[variantId]` | Yes | owner, manager | Update variant |
+| DELETE | `/api/products/[id]/variants/[variantId]` | Yes | owner | Delete variant |
+
+**GET `/api/products`**
+```
+Query:    ?businessId=uuid&search=string&category=string&page=1&limit=20
+Response: { data: Product[], total: number, page: number, totalPages: number }
+```
+
+**POST `/api/products`**
+```
+Request: {
+  businessId: string,
+  name: string,
+  category?: string,
+  description?: string,
+  variants: [{
+    size?: string, color?: string, scent?: string, flavor?: string,
+    unit: string, cost_price?: number, selling_price?: number,
+    reorder_threshold: number
+  }]
+}
+Response: { product: Product }
+Errors: 400, 401, 403
+```
+
+---
+
+### Inventory
+
+| Method | Path | Auth | Roles | Purpose |
+|--------|------|------|-------|---------|
+| GET | `/api/inventory` | Yes | all | Stock levels |
+| GET | `/api/inventory/low-stock` | Yes | all | Low stock items |
+| GET | `/api/inventory/adjustments` | Yes | owner, manager | Adjustment history |
+
+**GET `/api/inventory`**
+```
+Query:    ?businessId=uuid&locationId=uuid&search=string
+Response: {
+  data: {
+    product_name: string, variant: string, location: string,
+    quantity: number, reorder_threshold: number, status: "ok"|"low"|"out"
+  }[]
+}
+```
+
+---
+
+### Transactions
+
+| Method | Path | Auth | Roles | Purpose |
+|--------|------|------|-------|---------|
+| GET | `/api/transactions` | Yes | all | List transactions |
+| POST | `/api/transactions` | Yes | owner, manager, staff | Manual create |
+| GET | `/api/transactions/[id]` | Yes | all | Detail |
+| PUT | `/api/transactions/[id]` | Yes | owner, manager | Update status |
+
+**GET `/api/transactions`**
+```
+Query:    ?businessId=uuid&type=sale|purchase|...&status=confirmed|pending|cancelled&from=date&to=date&cursor=uuid&limit=20
+Response: { data: Transaction[], next_cursor: string|null }
+```
+
+---
+
+### Suppliers & Customers
+
+| Method | Path | Auth | Roles | Purpose |
+|--------|------|------|-------|---------|
+| GET | `/api/suppliers` | Yes | all | List |
+| POST | `/api/suppliers` | Yes | owner, manager | Create |
+| GET | `/api/suppliers/[id]` | Yes | all | Detail |
+| PUT | `/api/suppliers/[id]` | Yes | owner, manager | Update |
+| DELETE | `/api/suppliers/[id]` | Yes | owner | Delete |
+| GET | `/api/customers` | Yes | all | List |
+| POST | `/api/customers` | Yes | owner, manager | Create |
+| GET | `/api/customers/[id]` | Yes | all | Detail |
+| PUT | `/api/customers/[id]` | Yes | owner, manager | Update |
+| DELETE | `/api/customers/[id]` | Yes | owner | Delete |
+
+Both follow the same schema pattern:
+```
+POST Request: { businessId: string, name: string, phone?: string, email?: string, address?: string, notes?: string }
+Response: { supplier|customer: Contact }
+```
+
+---
+
+### Insights
+
+| Method | Path | Auth | Roles | Purpose |
+|--------|------|------|-------|---------|
+| GET | `/api/insights` | Yes | owner, manager | List insights |
+| PUT | `/api/insights/[id]` | Yes | owner, manager | Mark as read |
+
+**GET `/api/insights`**
+```
+Query:    ?businessId=uuid&type=low_stock|reorder|...&unreadOnly=boolean
+Response: { data: Insight[] }
+```
+
+---
+
+### Settings
+
+| Method | Path | Auth | Roles | Purpose |
+|--------|------|------|-------|---------|
+| GET | `/api/settings/business` | Yes | owner | Get business |
+| PUT | `/api/settings/business` | Yes | owner | Update business |
+| GET | `/api/settings/locations` | Yes | owner, manager | List locations |
+| POST | `/api/settings/locations` | Yes | owner | Create location |
+| PUT | `/api/settings/locations/[id]` | Yes | owner | Update location |
+| DELETE | `/api/settings/locations/[id]` | Yes | owner | Delete location |
+| GET | `/api/settings/team` | Yes | owner | List team |
+| PUT | `/api/settings/team/[memberId]` | Yes | owner | Update role |
+| DELETE | `/api/settings/team/[memberId]` | Yes | owner | Remove member |
+| PUT | `/api/settings/account` | Yes | all | Update profile |
+
+---
+
+### Invitations
+
+| Method | Path | Auth | Roles | Purpose |
+|--------|------|------|-------|---------|
+| POST | `/api/invitations` | Yes | owner | Create invite |
+| POST | `/api/invitations/accept` | Yes | any | Accept invite |
+
+---
+
+### Cron
+
+| Method | Path | Auth | Roles | Purpose |
+|--------|------|------|-------|---------|
+| POST | `/api/cron/insights` | CRON_SECRET | N/A | Nightly insight batch |

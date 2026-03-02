@@ -1,0 +1,380 @@
+# Part 5 — Auth & Onboarding + Frontend Architecture
+
+---
+
+## 6. Authentication & Onboarding Flow
+
+### 6.1 Supabase Auth Setup
+
+**Auth methods**: Email/password (primary), magic link (secondary).
+
+Supabase project config:
+- Enable email auth in Supabase Dashboard → Authentication → Providers
+- Disable email confirmation for MVP (reduces friction for African markets where email verification rates are low) — enable in Phase 2
+- Set redirect URLs: `http://localhost:3000`, `https://yourdomain.com`
+
+**Supabase client setup:**
+
+```typescript
+// src/lib/supabase/client.ts — Browser client
+import { createBrowserClient } from '@supabase/ssr';
+
+export function createClient() {
+  return createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+}
+```
+
+```typescript
+// src/lib/supabase/server.ts — Server client (App Router)
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
+
+export async function createServerSupabase() {
+  const cookieStore = await cookies();
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() { return cookieStore.getAll(); },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            cookieStore.set(name, value, options);
+          });
+        },
+      },
+    }
+  );
+}
+```
+
+```typescript
+// src/lib/supabase/admin.ts — Service role (server-only, bypasses RLS)
+import { createClient } from '@supabase/supabase-js';
+
+export function createServiceRoleClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
+```
+
+### 6.2 Middleware Route Protection
+
+```typescript
+// src/middleware.ts
+import { NextResponse, type NextRequest } from 'next/server';
+import { createServerClient } from '@supabase/ssr';
+
+const publicPaths = [
+  '/', '/signin', '/signup', '/forgot-password', '/reset-password',
+  '/pricing', '/terms', '/privacy',
+];
+
+const authPaths = ['/signin', '/signup', '/forgot-password', '/reset-password'];
+
+export async function middleware(req: NextRequest) {
+  const res = NextResponse.next();
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() { return req.cookies.getAll(); },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            req.cookies.set(name, value);
+            res.cookies.set(name, value, options);
+          });
+        },
+      },
+    }
+  );
+
+  const { data: { user } } = await supabase.auth.getUser();
+  const path = req.nextUrl.pathname;
+  const isPublic = publicPaths.some(p => path === p) || path.startsWith('/invite');
+
+  // Not logged in → redirect to signin (unless public path)
+  if (!user && !isPublic) {
+    return NextResponse.redirect(new URL('/signin', req.url));
+  }
+
+  // Logged in → redirect away from auth pages
+  if (user && authPaths.some(p => path === p)) {
+    return NextResponse.redirect(new URL('/app/chat', req.url));
+  }
+
+  // Logged in + accessing /app/* → check if onboarded
+  if (user && path.startsWith('/app')) {
+    const { data: member } = await supabase
+      .from('business_members')
+      .select('business_id')
+      .eq('user_id', user.id)
+      .limit(1)
+      .single();
+
+    if (!member) {
+      // No business → redirect to onboarding
+      return NextResponse.redirect(new URL('/onboarding', req.url));
+    }
+  }
+
+  return res;
+}
+
+export const config = {
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|icons|manifest.json).*)'],
+};
+```
+
+### 6.3 Session Management
+
+- Sessions are managed via Supabase's `sb-*` cookies set by `@supabase/ssr`
+- Sessions persist across tabs (same cookie)
+- Session refresh: Supabase auto-refreshes JWT tokens before expiry
+- Logout: call `supabase.auth.signOut()` → clears cookies → redirect to `/signin`
+- Cross-tab sync: use `supabase.auth.onAuthStateChange()` listener in a `useEffect` in the root layout to detect logout in other tabs
+
+### 6.4 Onboarding Wizard
+
+**3 steps, each its own component:**
+
+**Step 1 — Business Info:**
+- Fields: Business name (required), Business type (select: retail, pharmacy, restaurant, wholesale, beauty, other)
+- Validation: Zod schema `{ name: z.string().min(2).max(100), type: z.enum([...]) }`
+
+**Step 2 — Currency & Location:**
+- Fields: Currency (select: NGN, GHS, KES, ZAR, USD, GBP), Default location name (text, e.g., "Main Store"), Address (optional)
+- Validation: `{ currency: z.string().length(3), locationName: z.string().min(2) }`
+
+**Step 3 — Guided First Chat:**
+- Shows a mock chat interface with a pre-written suggestion: "I just bought 50 boxes of paracetamol for ₦200 each"
+- User taps Send → real API call → AI parses → confirmation card appears → user taps Confirm → transaction created
+- On confirm success, redirect to `/app/chat` with a "Welcome to Stoka!" toast
+
+**What gets created on completion:**
+
+| Step | DB Write |
+|------|----------|
+| Step 1 submit | `businesses` row + `business_members` row (role: owner) |
+| Step 2 submit | `locations` row (is_default: true) |
+| Step 3 confirm | `transactions` row + `transaction_items` + `stock_levels` + `products` + `product_variants` (if new) |
+
+### 6.5 Invitation Flow
+
+1. Owner navigates to Settings → Team → clicks "Invite Member"
+2. Enters: email, role (manager or staff)
+3. POST `/api/invitations` → creates `invitations` row with unique token, expires in 7 days
+4. Email sent via Supabase's built-in email (or Resend as an alternative) with link: `https://stoka.app/invite/{token}`
+5. Recipient clicks link → `/invite/[token]` page:
+   - If authenticated: POST `/api/invitations/accept` → validates token → checks expiry → creates `business_members` row → marks invitation as accepted → redirect to `/app/chat`
+   - If not authenticated: page shows "Create an account to join [Business Name]" → links to `/signup?invite={token}` → after signup, the `invite` query param triggers auto-acceptance
+
+---
+
+## 7. Frontend Architecture Plan
+
+### 7.1 Component Hierarchy
+
+```
+src/
+├── app/                          # Next.js App Router
+│   ├── (auth)/                   # Auth route group (no app shell)
+│   ├── (app)/                    # App route group (with app shell)
+│   │   ├── layout.tsx            # Fetches user/business, provides context
+│   │   ├── app/
+│   │   │   ├── chat/
+│   │   │   ├── dashboard/
+│   │   │   ├── products/
+│   │   │   ├── inventory/
+│   │   │   ├── transactions/
+│   │   │   ├── suppliers/
+│   │   │   ├── customers/
+│   │   │   ├── insights/
+│   │   │   └── settings/
+│   │   └── onboarding/
+│   └── (public)/                 # Landing + public pages (no app shell)
+├── components/
+│   ├── ui/                       # Atomic components (Button, Input, Badge, Card, etc.)
+│   ├── auth/                     # AuthForm, RoleGate
+│   ├── layout/                   # AppShell, Sidebar, MobileNav, ContextPanel
+│   ├── chat/                     # ChatContainer, ChatMessage, ChatInput, ConfirmationCard
+│   ├── dashboard/                # KPICard, charts, tables
+│   ├── products/                 # ProductTable, ProductForm, VariantForm
+│   ├── inventory/                # StockTable, LowStockAlert
+│   ├── transactions/             # TransactionTable, TransactionDetail, StatusBadge
+│   ├── contacts/                 # ContactTable, ContactForm (shared suppliers/customers)
+│   ├── insights/                 # InsightCard, InsightList
+│   ├── settings/                 # SettingsLayout, BusinessForm, TeamTable
+│   ├── onboarding/               # Wizard steps
+│   ├── landing/                  # Hero, Features, Pricing, etc.
+│   └── pwa/                      # InstallPrompt
+├── stores/                       # Zustand stores
+├── lib/                          # Utilities, hooks, AI, Supabase
+└── types/                        # TypeScript types
+```
+
+**Reusability principles:**
+- `ui/` components are style-only, no business logic
+- `ContactTable` and `ContactForm` are shared between suppliers and customers (parameterized by entity type)
+- `ProductForm` is reused for create and edit (pre-filled for edit)
+- `StatusBadge` is reused across transactions, insights, and inventory
+
+### 7.2 Zustand Store Structure
+
+```typescript
+// src/stores/useAuthStore.ts
+interface AuthState {
+  user: User | null;
+  business: Business | null;
+  role: 'owner' | 'manager' | 'staff' | null;
+  member: BusinessMember | null;
+  setAuth: (user, business, role, member) => void;
+  clearAuth: () => void;
+}
+```
+
+```typescript
+// src/stores/useChatStore.ts
+interface ChatState {
+  messages: ChatMessage[];
+  isStreaming: boolean;
+  pendingConfirmation: AIResponse | null;
+  addMessage: (msg) => void;
+  setStreaming: (v: boolean) => void;
+  setPendingConfirmation: (data: AIResponse | null) => void;
+  clearMessages: () => void;
+}
+```
+
+```typescript
+// src/stores/useUIStore.ts
+interface UIState {
+  sidebarOpen: boolean;
+  mobileActiveTab: 'chat' | 'dashboard' | 'products' | 'settings';
+  contextPanelContent: React.ReactNode | null;
+  toggleSidebar: () => void;
+  setMobileTab: (tab) => void;
+  setContextPanel: (content) => void;
+}
+```
+
+### 7.3 Data Fetching Patterns
+
+| Pattern | When to Use | Example |
+|---------|-------------|---------|
+| Server Component fetch | Initial page load, SEO-relevant | Dashboard KPIs, product list |
+| Client-side fetch + SWR-like | Post-mount, user-triggered | Search results, paginated lists |
+| Supabase Realtime | Live updates | Chat messages, insight notifications |
+| Zustand (local) | UI state, ephemeral data | Sidebar toggle, streaming state |
+
+**Server fetch pattern:**
+
+```tsx
+// page.tsx (server component)
+export default async function ProductsPage() {
+  const supabase = await createServerSupabase();
+  const { data: products } = await supabase
+    .from('products')
+    .select('*, product_variants(*)')
+    .order('created_at', { ascending: false });
+
+  return <ProductTable data={products || []} />;
+}
+```
+
+**Client fetch pattern:**
+
+```tsx
+// Client component fetching with useEffect (no SWR dep needed for MVP)
+'use client';
+export function TransactionList({ businessId }: { businessId: string }) {
+  const [transactions, setTransactions] = useState([]);
+  const [cursor, setCursor] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function load() {
+      const res = await fetch(`/api/transactions?businessId=${businessId}&limit=20${cursor ? `&cursor=${cursor}` : ''}`);
+      const data = await res.json();
+      setTransactions(prev => [...prev, ...data.data]);
+      setCursor(data.next_cursor);
+    }
+    load();
+  }, [cursor]);
+  // ...
+}
+```
+
+### 7.4 Form Handling
+
+All forms use React Hook Form + Zod:
+
+```tsx
+'use client';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { productSchema, type ProductInput } from '@/lib/validations/product';
+
+export function ProductForm({ defaultValues, onSubmit }) {
+  const form = useForm<ProductInput>({
+    resolver: zodResolver(productSchema),
+    defaultValues,
+  });
+
+  return (
+    <form onSubmit={form.handleSubmit(onSubmit)}>
+      {/* fields with form.register() */}
+      {/* inline errors with form.formState.errors */}
+    </form>
+  );
+}
+```
+
+**Validation schemas** live in `src/lib/validations/` — one file per domain (auth, product, transaction, contact, settings, onboarding).
+
+### 7.5 Error Boundary Strategy
+
+```tsx
+// src/components/ui/ErrorBoundary.tsx
+'use client';
+export class ErrorBoundary extends React.Component {
+  // Standard React error boundary
+  // Shows: "Something went wrong" + "Try again" button
+  // Logs error to console (add Sentry in Phase 2)
+}
+```
+
+Next.js file conventions:
+- `src/app/error.tsx` — global error fallback
+- `src/app/(app)/app/chat/error.tsx` — chat-specific error UI
+- `src/app/not-found.tsx` — 404 page
+
+### 7.6 Loading State Strategy
+
+Every page has a `loading.tsx` file using skeleton loaders:
+
+- **Dashboard**: skeleton KPI cards (gray rectangles) + skeleton chart areas
+- **Product list**: skeleton table (animated rows)
+- **Chat**: skeleton message bubbles
+- **Forms**: skeleton form fields
+
+```tsx
+// src/app/(app)/app/dashboard/loading.tsx
+export default function DashboardLoading() {
+  return (
+    <div className="grid grid-cols-4 gap-4">
+      {[...Array(4)].map((_, i) => (
+        <div key={i} className="h-32 rounded-2xl bg-dark-surface animate-pulse" />
+      ))}
+    </div>
+  );
+}
+```
+
+All skeletons use Tailwind's `animate-pulse` class. No additional animation library needed for loading states.

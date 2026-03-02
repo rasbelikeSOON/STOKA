@@ -1,0 +1,662 @@
+# Part 1 — Project Phases Overview & Phases 1–2
+
+---
+
+## 1. Project Phases Overview
+
+| Phase | Name | Weeks | Calendar | Goal |
+|-------|------|-------|----------|------|
+| 1 | Foundation | 1–2 | Weeks 1–2 | Next.js scaffold, Supabase schema, auth, onboarding, design system, app shell |
+| 2 | AI Chat Core | 3–5 | Weeks 3–5 | Claude pipeline, chat UI, confirmation cards, real-time updates |
+| 3 | Dashboard & Reports | 6–7 | Weeks 6–7 | KPI dashboard, sales/purchase/profit pages, charts |
+| 4 | Full CRUD & Contacts | 8–9 | Weeks 8–9 | Products, inventory, transactions, suppliers, customers, settings |
+| 5 | Polish, PWA & Launch | 10–12 | Weeks 10–12 | Insights engine, PWA, landing page, testing, deployment, go-live |
+
+**Total estimated build time: 12 weeks** (solo senior dev or agentic AI). Reduce to 8–9 weeks with two devs splitting frontend and backend.
+
+---
+
+## 2. Phase 1 — Foundation (Weeks 1–2)
+
+### Goal
+Bootable Next.js app with Supabase schema, authentication, onboarding wizard, design system, and app shell (sidebar, layout, route protection). No feature screens yet — but every screen that follows has a home.
+
+---
+
+### Week 1 — Scaffold, Schema, Auth
+
+#### Day 1–2: Project Init + Dependencies
+
+```bash
+npx -y create-next-app@latest ./ --typescript --tailwind --eslint --app --src-dir --import-alias "@/*" --use-npm
+```
+
+```bash
+npm install @supabase/supabase-js @supabase/ssr @supabase/auth-helpers-nextjs
+npm install zustand react-hook-form zod @hookform/resolvers
+npm install @tanstack/react-table recharts lucide-react framer-motion
+npm install date-fns papaparse sonner
+npm install next-pwa
+npm install @anthropic-ai/sdk
+```
+
+Dev dependencies:
+
+```bash
+npm install -D @types/papaparse supabase
+```
+
+**Environment variables** (`.env.local`):
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+SUPABASE_SERVICE_ROLE_KEY=eyJ...
+ANTHROPIC_API_KEY=sk-ant-...
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+```
+
+**Files created on Day 1–2:**
+
+| File | Purpose |
+|------|---------|
+| `src/app/globals.css` | Full CSS variable design system (all `--stoka-*` vars) |
+| `tailwind.config.ts` | Extend Tailwind with all Stoka tokens |
+| `src/lib/supabase/client.ts` | Browser Supabase client |
+| `src/lib/supabase/server.ts` | Server Supabase client (cookies-based) |
+| `src/lib/supabase/middleware.ts` | Supabase auth middleware helper |
+| `src/lib/supabase/admin.ts` | Service-role client for server-only operations |
+| `src/types/database.ts` | Generated Supabase types (run `supabase gen types typescript`) |
+| `src/types/index.ts` | App-level shared types |
+| `next.config.js` | PWA config (disabled in dev), image domains |
+
+#### Day 2–3: Database Schema
+
+All migrations run via Supabase CLI: `supabase migration new <name>`.
+
+**Migration 001 — Core tables:**
+
+```sql
+-- 001_core_schema.sql
+
+-- Enable UUID extension
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Businesses
+CREATE TABLE businesses (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('retail','pharmacy','restaurant','wholesale','beauty','other')),
+  currency TEXT NOT NULL DEFAULT 'NGN',
+  logo_url TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Business Members
+CREATE TABLE business_members (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK (role IN ('owner','manager','staff')) DEFAULT 'staff',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(business_id, user_id)
+);
+
+-- Locations
+CREATE TABLE locations (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  address TEXT,
+  is_default BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Products
+CREATE TABLE products (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  category TEXT,
+  description TEXT,
+  image_url TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Product Variants
+CREATE TABLE product_variants (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  sku TEXT,
+  size TEXT,
+  color TEXT,
+  scent TEXT,
+  flavor TEXT,
+  unit TEXT NOT NULL DEFAULT 'pcs',
+  cost_price NUMERIC(12,2),
+  selling_price NUMERIC(12,2),
+  reorder_threshold INTEGER NOT NULL DEFAULT 10,
+  expiry_date DATE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Stock Levels
+CREATE TABLE stock_levels (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  variant_id UUID NOT NULL REFERENCES product_variants(id) ON DELETE CASCADE,
+  location_id UUID NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
+  business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  quantity INTEGER NOT NULL DEFAULT 0,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(variant_id, location_id)
+);
+
+-- Suppliers
+CREATE TABLE suppliers (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  phone TEXT,
+  email TEXT,
+  address TEXT,
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Customers
+CREATE TABLE customers (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  phone TEXT,
+  email TEXT,
+  address TEXT,
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Transactions
+CREATE TABLE transactions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  location_id UUID NOT NULL REFERENCES locations(id),
+  type TEXT NOT NULL CHECK (type IN ('purchase','sale','adjustment','return','transfer')),
+  status TEXT NOT NULL CHECK (status IN ('confirmed','pending','cancelled')) DEFAULT 'pending',
+  supplier_id UUID REFERENCES suppliers(id),
+  customer_id UUID REFERENCES customers(id),
+  total_amount NUMERIC(12,2),
+  notes TEXT,
+  created_by UUID NOT NULL REFERENCES auth.users(id),
+  source TEXT NOT NULL CHECK (source IN ('chat','manual')) DEFAULT 'chat',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Transaction Items
+CREATE TABLE transaction_items (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  transaction_id UUID NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+  variant_id UUID NOT NULL REFERENCES product_variants(id),
+  quantity INTEGER NOT NULL,
+  unit_price NUMERIC(12,2) NOT NULL,
+  total_price NUMERIC(12,2) NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Chat Messages
+CREATE TABLE chat_messages (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES auth.users(id),
+  role TEXT NOT NULL CHECK (role IN ('user','assistant','system')),
+  content TEXT NOT NULL,
+  metadata JSONB DEFAULT '{}',
+  transaction_id UUID REFERENCES transactions(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Insights Log
+CREATE TABLE insights_log (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  type TEXT NOT NULL CHECK (type IN (
+    'low_stock','reorder','slow_mover','expiry_warning',
+    'revenue_milestone','top_performer'
+  )),
+  title TEXT NOT NULL,
+  message TEXT NOT NULL,
+  severity TEXT NOT NULL CHECK (severity IN ('info','warning','critical')) DEFAULT 'info',
+  related_product_id UUID REFERENCES products(id),
+  related_variant_id UUID REFERENCES product_variants(id),
+  data JSONB DEFAULT '{}',
+  is_read BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Invitations
+CREATE TABLE invitations (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  email TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('manager','staff')) DEFAULT 'staff',
+  token TEXT NOT NULL UNIQUE DEFAULT encode(gen_random_bytes(32), 'hex'),
+  invited_by UUID NOT NULL REFERENCES auth.users(id),
+  accepted_at TIMESTAMPTZ,
+  expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '7 days'),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Indexes
+CREATE INDEX idx_business_members_user ON business_members(user_id);
+CREATE INDEX idx_business_members_business ON business_members(business_id);
+CREATE INDEX idx_products_business ON products(business_id);
+CREATE INDEX idx_product_variants_product ON product_variants(product_id);
+CREATE INDEX idx_product_variants_business ON product_variants(business_id);
+CREATE INDEX idx_stock_levels_variant ON stock_levels(variant_id);
+CREATE INDEX idx_stock_levels_location ON stock_levels(location_id);
+CREATE INDEX idx_stock_levels_business ON stock_levels(business_id);
+CREATE INDEX idx_transactions_business ON transactions(business_id);
+CREATE INDEX idx_transactions_type ON transactions(business_id, type);
+CREATE INDEX idx_transactions_created ON transactions(business_id, created_at DESC);
+CREATE INDEX idx_transaction_items_transaction ON transaction_items(transaction_id);
+CREATE INDEX idx_chat_messages_business ON chat_messages(business_id, created_at DESC);
+CREATE INDEX idx_insights_log_business ON insights_log(business_id, created_at DESC);
+CREATE INDEX idx_insights_log_unread ON insights_log(business_id, is_read) WHERE is_read = false;
+CREATE INDEX idx_invitations_token ON invitations(token);
+CREATE INDEX idx_invitations_email ON invitations(email);
+```
+
+**Migration 002 — RLS policies:**
+
+```sql
+-- 002_rls_policies.sql
+
+ALTER TABLE businesses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE business_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE locations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE product_variants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE stock_levels ENABLE ROW LEVEL SECURITY;
+ALTER TABLE suppliers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE customers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE transaction_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE insights_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE invitations ENABLE ROW LEVEL SECURITY;
+
+-- Helper: get current user's business IDs
+CREATE OR REPLACE FUNCTION get_user_business_ids()
+RETURNS SETOF UUID AS $$
+  SELECT business_id FROM business_members WHERE user_id = auth.uid()
+$$ LANGUAGE sql SECURITY DEFINER STABLE;
+
+-- Pattern: every tenant table gets SELECT/INSERT/UPDATE/DELETE
+-- scoped to businesses the user belongs to
+
+-- businesses
+CREATE POLICY "members can view their businesses" ON businesses
+  FOR SELECT USING (id IN (SELECT get_user_business_ids()));
+CREATE POLICY "authenticated users can create businesses" ON businesses
+  FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+CREATE POLICY "owners can update their business" ON businesses
+  FOR UPDATE USING (
+    id IN (
+      SELECT business_id FROM business_members
+      WHERE user_id = auth.uid() AND role = 'owner'
+    )
+  );
+
+-- business_members
+CREATE POLICY "members can view team" ON business_members
+  FOR SELECT USING (business_id IN (SELECT get_user_business_ids()));
+CREATE POLICY "owners can manage team" ON business_members
+  FOR ALL USING (
+    business_id IN (
+      SELECT business_id FROM business_members
+      WHERE user_id = auth.uid() AND role = 'owner'
+    )
+  );
+
+-- Generic tenant-scoped policy (applied to all remaining tables)
+-- locations, products, product_variants, stock_levels, suppliers,
+-- customers, transactions, transaction_items, chat_messages, insights_log
+-- Each gets: SELECT WHERE business_id IN user_business_ids
+--            INSERT WITH CHECK same
+--            UPDATE USING same
+--            DELETE USING same (owner/manager only enforced at app layer)
+```
+
+> The full RLS for each table follows the same `business_id IN (SELECT get_user_business_ids())` pattern. The above shows the core pattern; each table gets its own policies.
+
+#### Day 3–4: Auth Pages + Middleware
+
+**Files created:**
+
+| File | Purpose |
+|------|---------|
+| `src/middleware.ts` | Route protection — redirect unauthenticated to `/signin` |
+| `src/app/(auth)/signin/page.tsx` | Sign in form |
+| `src/app/(auth)/signup/page.tsx` | Sign up form |
+| `src/app/(auth)/forgot-password/page.tsx` | Password reset request |
+| `src/app/(auth)/reset-password/page.tsx` | Set new password |
+| `src/app/(auth)/layout.tsx` | Shared auth layout (centered card) |
+| `src/components/auth/AuthForm.tsx` | Reusable auth form component |
+| `src/lib/validations/auth.ts` | Zod schemas: `signInSchema`, `signUpSchema`, `resetSchema` |
+
+**Middleware logic (`src/middleware.ts`):**
+
+```typescript
+// Pseudocode — actual implementation uses @supabase/ssr
+const publicRoutes = ['/', '/signin', '/signup', '/forgot-password',
+  '/reset-password', '/pricing', '/terms', '/privacy', '/invite'];
+
+export async function middleware(req) {
+  const supabase = createServerClient(/* cookies */);
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user && !isPublicRoute(req.nextUrl.pathname)) {
+    return redirect('/signin');
+  }
+
+  if (user && isAuthRoute(req.nextUrl.pathname)) {
+    return redirect('/app/chat');
+  }
+}
+```
+
+#### Day 5: App Shell + Layout
+
+**Files created:**
+
+| File | Purpose |
+|------|---------|
+| `src/app/(app)/layout.tsx` | App layout wrapper — fetches user + business, provides context |
+| `src/components/layout/AppShell.tsx` | Three-column responsive shell |
+| `src/components/layout/Sidebar.tsx` | Dark sidebar nav (desktop) |
+| `src/components/layout/MobileNav.tsx` | Bottom nav bar (mobile) |
+| `src/components/layout/SidebarItem.tsx` | Single nav item with active state |
+| `src/components/layout/ContextPanel.tsx` | Right contextual panel (desktop) |
+| `src/stores/useAuthStore.ts` | Zustand: user, business, role, member |
+| `src/stores/useUIStore.ts` | Zustand: sidebar open, mobile nav active tab, context panel |
+| `src/lib/hooks/useBusinessContext.ts` | Hook to get current business + role |
+| `src/components/ui/Logo.tsx` | Stoka logo component |
+
+---
+
+### Week 2 — Onboarding, Invitation, Route Stubs
+
+#### Day 1–2: Onboarding Wizard
+
+**Files created:**
+
+| File | Purpose |
+|------|---------|
+| `src/app/(app)/onboarding/page.tsx` | 3-step wizard page |
+| `src/components/onboarding/OnboardingWizard.tsx` | Wizard container with step state |
+| `src/components/onboarding/StepBusinessInfo.tsx` | Step 1: business name, type |
+| `src/components/onboarding/StepCurrencyLocation.tsx` | Step 2: currency, default location |
+| `src/components/onboarding/StepFirstChat.tsx` | Step 3: guided first interaction |
+| `src/app/api/onboarding/route.ts` | POST: creates business + member + location |
+| `src/lib/validations/onboarding.ts` | Zod schemas for each step |
+
+**Step 1** creates: `businesses` row, `business_members` row (role: owner), one default `locations` row.
+
+**Step 3** shows a pre-filled chat message ("I just bought 50 boxes of paracetamol for ₦200 each") and lets the user tap Send to see the AI parse and confirm. The transaction is real — it writes to the DB. This is the "aha moment."
+
+#### Day 3: Invitation Flow
+
+**Files created:**
+
+| File | Purpose |
+|------|---------|
+| `src/app/invite/[token]/page.tsx` | Accept invite page |
+| `src/app/api/invitations/route.ts` | POST: create invitation |
+| `src/app/api/invitations/accept/route.ts` | POST: redeem token |
+| `src/lib/email/sendInvite.ts` | Sends invite email (Supabase built-in or Resend) |
+
+Flow: Owner → Settings → Team → Invite → enters email + role → API creates `invitations` row → sends email with link `{APP_URL}/invite/{token}` → recipient clicks → if authenticated, `business_members` row created, redirect to `/app/chat`. If not authenticated, redirect to `/signup?invite={token}`, post-signup auto-accepts.
+
+#### Day 4–5: Route Stubs + Placeholder Pages
+
+Create every route from the sitemap as a stub `page.tsx` with the correct layout and a "Coming soon" placeholder. This ensures routing works end-to-end before feature work begins.
+
+**Files created (stubs only — content built in later phases):**
+
+```
+src/app/(app)/app/chat/page.tsx
+src/app/(app)/app/dashboard/page.tsx
+src/app/(app)/app/dashboard/sales/page.tsx
+src/app/(app)/app/dashboard/purchases/page.tsx
+src/app/(app)/app/dashboard/profit/page.tsx
+src/app/(app)/app/products/page.tsx
+src/app/(app)/app/products/new/page.tsx
+src/app/(app)/app/products/[id]/page.tsx
+src/app/(app)/app/products/[id]/edit/page.tsx
+src/app/(app)/app/products/[id]/variants/page.tsx
+src/app/(app)/app/inventory/page.tsx
+src/app/(app)/app/inventory/low-stock/page.tsx
+src/app/(app)/app/inventory/adjustments/page.tsx
+src/app/(app)/app/transactions/page.tsx
+src/app/(app)/app/transactions/[id]/page.tsx
+src/app/(app)/app/transactions/new/page.tsx
+src/app/(app)/app/suppliers/page.tsx
+src/app/(app)/app/suppliers/new/page.tsx
+src/app/(app)/app/suppliers/[id]/page.tsx
+src/app/(app)/app/suppliers/[id]/edit/page.tsx
+src/app/(app)/app/customers/page.tsx
+src/app/(app)/app/customers/new/page.tsx
+src/app/(app)/app/customers/[id]/page.tsx
+src/app/(app)/app/customers/[id]/edit/page.tsx
+src/app/(app)/app/insights/page.tsx
+src/app/(app)/app/settings/page.tsx
+src/app/(app)/app/settings/business/page.tsx
+src/app/(app)/app/settings/locations/page.tsx
+src/app/(app)/app/settings/team/page.tsx
+src/app/(app)/app/settings/billing/page.tsx
+src/app/(app)/app/settings/account/page.tsx
+```
+
+**Testing checkpoint — Phase 1 done when:**
+- [ ] `npm run dev` boots without errors
+- [ ] Supabase migrations apply cleanly
+- [ ] Sign up creates auth user + redirects to `/onboarding`
+- [ ] Onboarding completes and creates business + member + location
+- [ ] Sign in redirects to `/app/chat`
+- [ ] Unauthenticated users redirected to `/signin`
+- [ ] Sidebar renders with all nav items
+- [ ] Mobile bottom nav renders on small screens
+- [ ] All route stubs are reachable
+- [ ] Invitation flow: create invite → accept → new member appears
+
+**Common failure points:**
+- Supabase RLS blocks INSERT on `businesses` during onboarding — fix: the INSERT policy on `businesses` must allow any authenticated user to create
+- Middleware redirect loop — fix: ensure `/onboarding` is in the authenticated-but-no-business-yet allow list
+- Cookie not set on SSR — fix: use `@supabase/ssr` `createServerClient` correctly with `cookies()` from `next/headers`
+
+---
+
+## 3. Phase 2 — AI Chat Core (Weeks 3–5)
+
+### Goal
+Working conversational interface. User types natural language, Claude parses it, returns structured data, user confirms, DB updates. Full chat history persistence with Supabase Realtime.
+
+---
+
+### Week 3 — Claude Pipeline + Chat API
+
+#### Day 1–2: Anthropic SDK + System Prompt Builder
+
+**Files created:**
+
+| File | Purpose |
+|------|---------|
+| `src/lib/ai/anthropic.ts` | Anthropic SDK client singleton |
+| `src/lib/ai/systemPrompt.ts` | Dynamic system prompt builder |
+| `src/lib/ai/schemas.ts` | Zod schemas for Claude's JSON response |
+| `src/lib/ai/intentHandlers.ts` | Maps intents to DB write functions |
+| `src/lib/ai/parseResponse.ts` | Validates + parses Claude JSON output |
+| `src/lib/ai/conversationHistory.ts` | Manages message history for context window |
+| `src/app/api/chat/route.ts` | POST: main chat endpoint (streaming) |
+| `src/app/api/chat/confirm/route.ts` | POST: confirm and execute transaction |
+
+**System prompt assembly** (`systemPrompt.ts`):
+
+The system prompt is rebuilt per request. It includes:
+
+1. **Role definition**: "You are Stoka, an inventory management assistant..."
+2. **Business context**: business name, type, currency, locations (fetched from DB)
+3. **Known products**: top 50 products with variants (names, sizes, current stock) — fetched from DB, formatted as a compact list
+4. **Known suppliers/customers**: names only, for entity matching
+5. **Response format**: exact JSON schema Claude must follow
+6. **Examples**: 3–4 few-shot examples of input → JSON output
+
+Token budget: system prompt ≈ 1,500–2,500 tokens. Conversation history: last 20 messages, capped at 4,000 tokens. Total per request: ≤ 8,000 input tokens.
+
+**Claude response schema** (`schemas.ts`):
+
+```typescript
+import { z } from 'zod';
+
+export const TransactionItemSchema = z.object({
+  product_name: z.string(),
+  variant_descriptor: z.string().optional(), // "lavender small size"
+  quantity: z.number().int().positive(),
+  unit_price: z.number().positive(),
+  total_price: z.number().positive(),
+  is_new_product: z.boolean(),
+  matched_product_id: z.string().uuid().nullable(),
+  matched_variant_id: z.string().uuid().nullable(),
+});
+
+export const AIResponseSchema = z.object({
+  intent: z.enum([
+    'log_purchase', 'log_sale', 'stock_check',
+    'log_adjustment', 'log_return', 'log_transfer',
+    'create_product', 'price_check', 'general_query'
+  ]),
+  confidence: z.number().min(0).max(1),
+  needs_clarification: z.boolean(),
+  clarification_question: z.string().optional(),
+  confirmation_message: z.string(),
+  transaction: z.object({
+    type: z.enum(['purchase','sale','adjustment','return','transfer']),
+    items: z.array(TransactionItemSchema),
+    supplier_name: z.string().optional(),
+    customer_name: z.string().optional(),
+    location_name: z.string().optional(),
+    total_amount: z.number(),
+    notes: z.string().optional(),
+  }).optional(),
+});
+```
+
+#### Day 3–4: Intent Handlers + DB Writers
+
+**Intent handler map** (`intentHandlers.ts`):
+
+Each intent maps to a function that:
+1. Resolves product/variant IDs (creates new if `is_new_product: true`)
+2. Creates the `transactions` row
+3. Creates `transaction_items` rows
+4. Updates `stock_levels` (increment for purchase, decrement for sale)
+5. Returns the completed transaction ID
+
+**Auto product creation**: When `is_new_product: true`, the handler:
+1. Creates a `products` row with the name Claude extracted
+2. Creates a `product_variants` row with size/scent/color/flavor parsed by Claude
+3. Creates a `stock_levels` row for the default location with quantity 0
+4. Then proceeds with the transaction as normal
+
+**Race condition prevention**: Use `SELECT ... FOR UPDATE` on `stock_levels` row before decrementing. If resulting quantity < 0 for a sale, return error "Insufficient stock" rather than allowing negative.
+
+#### Day 5: Streaming + Error Handling
+
+The `/api/chat` route uses streaming:
+
+```typescript
+const stream = await anthropic.messages.stream({
+  model: 'claude-sonnet-4-6',
+  max_tokens: 1024,
+  system: systemPrompt,
+  messages: conversationHistory,
+});
+```
+
+Stream the `confirmation_message` text to the frontend in real-time. Once streaming completes, parse the full JSON, validate with Zod. If validation fails, retry once with a "Please respond in the exact JSON format specified" appended.
+
+**Error handling:**
+- Rate limit (429): exponential backoff, 3 retries, then show "AI is busy, try again in a moment"
+- Timeout (>15s): abort, show "Request timed out, please try again"
+- Malformed JSON: retry once with format reminder, then show "I couldn't understand that, please try rephrasing"
+- Network error: show offline toast via Sonner
+
+---
+
+### Week 4 — Chat UI
+
+**Files created:**
+
+| File | Purpose |
+|------|---------|
+| `src/components/chat/ChatContainer.tsx` | Main chat view — messages + input |
+| `src/components/chat/ChatMessage.tsx` | Single message bubble (user or AI) |
+| `src/components/chat/ChatInput.tsx` | Input bar with send button |
+| `src/components/chat/ConfirmationCard.tsx` | Structured card for AI-parsed transaction |
+| `src/components/chat/QuickActions.tsx` | 2-column pill grid (Log Purchase, Record Sale, etc.) |
+| `src/components/chat/ChatGreeting.tsx` | "Hey, [Name]!" welcome screen |
+| `src/components/chat/ChatHistory.tsx` | Left sidebar: grouped conversation history |
+| `src/components/chat/InlineChart.tsx` | Small Recharts chart embedded in AI message |
+| `src/components/chat/TypingIndicator.tsx` | Animated dots while AI is responding |
+| `src/stores/useChatStore.ts` | Zustand: messages, streaming state, pending confirmation |
+
+**Confirmation card flow:**
+
+1. User sends message
+2. Streaming AI response appears as a chat bubble
+3. When complete, if intent is a transaction, a `ConfirmationCard` renders below
+4. Card shows: intent label, list of items (name, qty, price), total, location
+5. Two buttons: ✓ Confirm (green), ✗ Cancel (ghost)
+6. On Confirm → POST `/api/chat/confirm` → DB writes → success toast → card updates to "Confirmed ✓"
+7. On Cancel → card updates to "Cancelled" — no DB write
+
+**Corrections**: If user types "no, it was 200 units" after a confirmation card:
+- The full conversation history (including the AI's previous structured response) is sent back to Claude
+- Claude sees the context, understands the correction, and re-emits the updated JSON
+- A new confirmation card replaces the old one
+
+---
+
+### Week 5 — Realtime + Chat Polish
+
+**Files created:**
+
+| File | Purpose |
+|------|---------|
+| `src/lib/supabase/realtime.ts` | Supabase Realtime subscription helpers |
+| `src/components/chat/ChatMessageList.tsx` | Virtualized message list for performance |
+| `src/lib/hooks/useChatSubscription.ts` | Hook: subscribe to new messages in real-time |
+| `src/lib/hooks/useInsightSubscription.ts` | Hook: subscribe to new insights pushed to chat |
+
+**Realtime setup**: Subscribe to `chat_messages` table filtered by `business_id`. When another team member logs a transaction, the chat updates in real-time for all connected users.
+
+**Testing checkpoint — Phase 2 done when:**
+- [ ] User types "I bought 100 bottles of shampoo lavender small for ₦50 each" → AI returns structured confirmation card
+- [ ] Tapping Confirm writes transaction + updates stock level
+- [ ] Tapping Cancel does nothing to DB
+- [ ] Chat history persists across page reloads
+- [ ] Conversation history sidebar shows grouped sessions
+- [ ] Quick action pills work (pre-fill the input)
+- [ ] Streaming works — text appears word by word
+- [ ] Corrections work — "no, it was 200 units" updates the card
+- [ ] Realtime — second browser tab sees messages appear
+- [ ] Error states display for API failures
+
+**Common failure points:**
+- Claude returns conversational text instead of JSON — fix: enforce JSON in system prompt with `"You MUST respond with ONLY a JSON object"` and use `response_format` if available
+- Supabase Realtime not firing — fix: ensure the table has `REPLICA IDENTITY FULL` set and the Realtime publication includes the table
+- Stock going negative — fix: `SELECT ... FOR UPDATE` + check in transaction
+- Token limit exceeded — fix: conversation history truncation (keep system prompt + last 20 messages + current message, summarize older context)

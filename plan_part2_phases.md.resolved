@@ -1,0 +1,406 @@
+# Part 2 — Phases 3–5
+
+---
+
+## Phase 3 — Dashboard & Reports (Weeks 6–7)
+
+### Goal
+Visual reporting layer. KPI cards, revenue/purchase/profit charts, and a dark-mode desktop dashboard. Zero data entry happens here — dashboard is read-only.
+
+---
+
+### Week 6 — Dashboard Overview + Sales
+
+**Files created:**
+
+| File | Purpose |
+|------|---------|
+| `src/app/(app)/app/dashboard/page.tsx` | Dashboard overview (server component fetches KPIs) |
+| `src/app/(app)/app/dashboard/layout.tsx` | Dashboard layout — dark mode wrapper |
+| `src/app/(app)/app/dashboard/sales/page.tsx` | Sales breakdown page |
+| `src/components/dashboard/KPICard.tsx` | Single KPI metric card |
+| `src/components/dashboard/KPIGrid.tsx` | 4-column (desktop) / 2×2 (mobile) KPI layout |
+| `src/components/dashboard/RevenueChart.tsx` | Line chart — revenue over time |
+| `src/components/dashboard/SalesBreakdownChart.tsx` | Donut chart — sales by category |
+| `src/components/dashboard/TopProductsTable.tsx` | TanStack Table — top selling products |
+| `src/components/dashboard/DateRangeFilter.tsx` | Date range picker (7d / 30d / 90d / custom) |
+| `src/components/dashboard/DashboardHeader.tsx` | Title + date filter + export button |
+| `src/components/dashboard/InsightsSummaryCard.tsx` | Purple gradient card: unread insights CTA |
+| `src/app/api/dashboard/overview/route.ts` | GET: KPIs (total revenue, total purchases, profit margin, low stock count) |
+| `src/app/api/dashboard/sales/route.ts` | GET: sales data grouped by period |
+| `src/lib/queries/dashboard.ts` | SQL query builders for dashboard aggregations |
+
+**KPI calculations** (all server-side, scoped by `business_id` + date range):
+
+| KPI | Query |
+|-----|-------|
+| Total Revenue | `SUM(total_amount) FROM transactions WHERE type='sale' AND status='confirmed'` |
+| Total Purchases | `SUM(total_amount) FROM transactions WHERE type='purchase' AND status='confirmed'` |
+| Gross Profit | Revenue − Cost of Goods Sold (sum of `cost_price * quantity` for sold items) |
+| Low Stock Items | `COUNT(*) FROM stock_levels sl JOIN product_variants pv ON sl.variant_id=pv.id WHERE sl.quantity <= pv.reorder_threshold` |
+
+**Dark mode strategy**: The dashboard layout wraps children in a `<div className="dark">` container. All dashboard components use `dark:` Tailwind variants. The Tailwind config has `darkMode: 'class'`. Only the dashboard uses dark mode — all other app pages remain light.
+
+---
+
+### Week 7 — Purchases + Profit
+
+**Files created:**
+
+| File | Purpose |
+|------|---------|
+| `src/app/(app)/app/dashboard/purchases/page.tsx` | Purchase cost analysis |
+| `src/app/(app)/app/dashboard/profit/page.tsx` | Gross profit per product + overall |
+| `src/components/dashboard/PurchaseCostChart.tsx` | Bar chart — purchases by supplier |
+| `src/components/dashboard/SupplierBreakdownTable.tsx` | Table — spending per supplier |
+| `src/components/dashboard/ProfitMarginChart.tsx` | Horizontal bar — margin % per product |
+| `src/components/dashboard/ProfitTrendChart.tsx` | Line — profit over time |
+| `src/components/dashboard/ExportButton.tsx` | CSV export via PapaParse |
+| `src/app/api/dashboard/purchases/route.ts` | GET: purchase data |
+| `src/app/api/dashboard/profit/route.ts` | GET: profit data |
+
+**CSV export**: Uses PapaParse `unparse()`. Exports current table data to `.csv`. Available on every table view via the `ExportButton` component.
+
+**Testing checkpoint — Phase 3 done when:**
+- [ ] Dashboard overview shows 4 KPIs with correct numbers
+- [ ] Revenue chart renders with real transaction data
+- [ ] Dark mode applies only to dashboard, not to other pages
+- [ ] Date range filter updates all charts and KPIs
+- [ ] Sales breakdown donut shows categories
+- [ ] Purchase page shows per-supplier costs
+- [ ] Profit page shows margin per product
+- [ ] CSV export downloads valid file
+- [ ] Mobile dashboard shows 2×2 KPI grid in light mode
+- [ ] All dashboard pages load in < 2 seconds
+
+**Common failure points:**
+- Division by zero in profit margin — fix: guard with `NULLIF(cost, 0)` in SQL
+- Chart renders with no data on new accounts — fix: show empty state component "No data yet — start logging transactions"
+- Dark mode leaking to non-dashboard pages — fix: verify the `dark` class is only in the dashboard layout, not the root
+
+---
+
+## Phase 4 — Full CRUD & Contacts (Weeks 8–9)
+
+### Goal
+All product, inventory, transaction, supplier, and customer CRUD pages. Settings pages. This is the "fill in every page" phase.
+
+---
+
+### Week 8 — Products + Inventory + Transactions
+
+**Files created — Products:**
+
+| File | Purpose |
+|------|---------|
+| `src/app/(app)/app/products/page.tsx` | Product list with search + filters |
+| `src/app/(app)/app/products/new/page.tsx` | Create product form |
+| `src/app/(app)/app/products/[id]/page.tsx` | Product detail + transaction history |
+| `src/app/(app)/app/products/[id]/edit/page.tsx` | Edit product form |
+| `src/app/(app)/app/products/[id]/variants/page.tsx` | Manage variants |
+| `src/components/products/ProductTable.tsx` | TanStack Table — sortable, filterable |
+| `src/components/products/ProductForm.tsx` | React Hook Form — reused for create/edit |
+| `src/components/products/VariantForm.tsx` | Variant create/edit form |
+| `src/components/products/ProductCard.tsx` | Card view for mobile |
+| `src/components/products/StockBadge.tsx` | Color-coded stock level badge |
+| `src/app/api/products/route.ts` | GET (list) + POST (create) |
+| `src/app/api/products/[id]/route.ts` | GET + PUT + DELETE |
+| `src/app/api/products/[id]/variants/route.ts` | GET + POST |
+| `src/app/api/products/[id]/variants/[variantId]/route.ts` | PUT + DELETE |
+| `src/lib/validations/product.ts` | Zod schemas |
+
+**Files created — Inventory:**
+
+| File | Purpose |
+|------|---------|
+| `src/app/(app)/app/inventory/page.tsx` | Stock overview across all locations |
+| `src/app/(app)/app/inventory/low-stock/page.tsx` | Filtered: items ≤ reorder threshold |
+| `src/app/(app)/app/inventory/adjustments/page.tsx` | Adjustment history |
+| `src/components/inventory/StockTable.tsx` | TanStack Table — variant, location, qty, status |
+| `src/components/inventory/LowStockAlert.tsx` | Alert row with reorder CTA |
+| `src/app/api/inventory/route.ts` | GET: stock levels with joins |
+| `src/app/api/inventory/adjustments/route.ts` | GET: type='adjustment' transactions |
+
+**Files created — Transactions:**
+
+| File | Purpose |
+|------|---------|
+| `src/app/(app)/app/transactions/page.tsx` | Paginated transaction list |
+| `src/app/(app)/app/transactions/[id]/page.tsx` | Transaction detail |
+| `src/app/(app)/app/transactions/new/page.tsx` | Manual entry fallback form |
+| `src/components/transactions/TransactionTable.tsx` | TanStack Table |
+| `src/components/transactions/TransactionDetail.tsx` | Detail view with line items |
+| `src/components/transactions/TransactionForm.tsx` | Manual entry form |
+| `src/components/transactions/StatusBadge.tsx` | CONFIRMED / PENDING / CANCELLED badges |
+| `src/components/transactions/AttributePills.tsx` | Variant attribute pills (size · scent · color) |
+| `src/app/api/transactions/route.ts` | GET (list, paginated) + POST (manual create) |
+| `src/app/api/transactions/[id]/route.ts` | GET + PUT (status update) |
+| `src/lib/validations/transaction.ts` | Zod schemas |
+
+**Pagination pattern**: All list endpoints use cursor-based pagination. Query params: `?cursor=<last_id>&limit=20&sort=created_at&order=desc`. Response: `{ data: [...], next_cursor: "..." | null }`.
+
+---
+
+### Week 9 — Contacts + Settings
+
+**Files created — Suppliers:**
+
+| File | Purpose |
+|------|---------|
+| `src/app/(app)/app/suppliers/page.tsx` | Supplier list |
+| `src/app/(app)/app/suppliers/new/page.tsx` | Create supplier |
+| `src/app/(app)/app/suppliers/[id]/page.tsx` | Supplier detail + purchase history |
+| `src/app/(app)/app/suppliers/[id]/edit/page.tsx` | Edit supplier |
+| `src/components/contacts/ContactTable.tsx` | Shared table for suppliers + customers |
+| `src/components/contacts/ContactForm.tsx` | Shared form for suppliers + customers |
+| `src/app/api/suppliers/route.ts` | GET + POST |
+| `src/app/api/suppliers/[id]/route.ts` | GET + PUT + DELETE |
+
+**Files created — Customers:**
+
+| File | Purpose |
+|------|---------|
+| `src/app/(app)/app/customers/page.tsx` | Customer list |
+| `src/app/(app)/app/customers/new/page.tsx` | Create customer |
+| `src/app/(app)/app/customers/[id]/page.tsx` | Customer detail + sales history |
+| `src/app/(app)/app/customers/[id]/edit/page.tsx` | Edit customer |
+| `src/app/api/customers/route.ts` | GET + POST |
+| `src/app/api/customers/[id]/route.ts` | GET + PUT + DELETE |
+| `src/lib/validations/contact.ts` | Zod: supplierSchema, customerSchema |
+
+**Files created — Settings:**
+
+| File | Purpose |
+|------|---------|
+| `src/app/(app)/app/settings/page.tsx` | Settings home — links to subsections |
+| `src/app/(app)/app/settings/business/page.tsx` | Business name, type, currency, logo |
+| `src/app/(app)/app/settings/locations/page.tsx` | Add/edit/delete locations |
+| `src/app/(app)/app/settings/team/page.tsx` | Team members list + invite form |
+| `src/app/(app)/app/settings/billing/page.tsx` | Plan info + upgrade CTA (placeholder for Stripe) |
+| `src/app/(app)/app/settings/account/page.tsx` | Personal: email, password change |
+| `src/components/settings/SettingsLayout.tsx` | Settings sidebar/tabs layout |
+| `src/components/settings/BusinessForm.tsx` | Business settings form |
+| `src/components/settings/LocationList.tsx` | Location CRUD list |
+| `src/components/settings/TeamTable.tsx` | Members table with role badges |
+| `src/components/settings/InviteForm.tsx` | Invite by email + role select |
+| `src/app/api/settings/business/route.ts` | GET + PUT |
+| `src/app/api/settings/locations/route.ts` | GET + POST |
+| `src/app/api/settings/locations/[id]/route.ts` | PUT + DELETE |
+| `src/app/api/settings/team/route.ts` | GET team members |
+| `src/app/api/settings/team/[memberId]/route.ts` | PUT (update role) + DELETE (remove) |
+| `src/app/api/settings/account/route.ts` | PUT (update profile) |
+| `src/lib/validations/settings.ts` | Zod schemas |
+
+**Role enforcement** — every API route checks role:
+
+```typescript
+// src/lib/auth/checkRole.ts
+export async function checkRole(
+  supabase: SupabaseClient,
+  businessId: string,
+  requiredRoles: ('owner' | 'manager' | 'staff')[]
+) {
+  const { data: member } = await supabase
+    .from('business_members')
+    .select('role')
+    .eq('business_id', businessId)
+    .eq('user_id', (await supabase.auth.getUser()).data.user?.id)
+    .single();
+
+  if (!member || !requiredRoles.includes(member.role)) {
+    return { authorized: false, role: member?.role };
+  }
+  return { authorized: true, role: member.role };
+}
+```
+
+| Action | Owner | Manager | Staff |
+|--------|-------|---------|-------|
+| Log transaction (chat) | ✓ | ✓ | ✓ |
+| View products/inventory | ✓ | ✓ | ✓ |
+| Create/edit products | ✓ | ✓ | ✗ |
+| Delete anything | ✓ | ✗ | ✗ |
+| View dashboard (all) | ✓ | ✓ | ✗ |
+| View financials (profit) | ✓ | ✗ | ✗ |
+| Manage team | ✓ | ✗ | ✗ |
+| Edit business settings | ✓ | ✗ | ✗ |
+| View own transactions | ✓ | ✓ | ✓ |
+
+Frontend enforcement: a `<RoleGate>` component wraps UI elements. Checks role from `useAuthStore` and renders children only if authorized. Unauthorized routes redirect to `/app/chat`.
+
+```tsx
+// src/components/auth/RoleGate.tsx
+export function RoleGate({ allowed, children, fallback }: {
+  allowed: ('owner' | 'manager' | 'staff')[];
+  children: React.ReactNode;
+  fallback?: React.ReactNode;
+}) {
+  const role = useAuthStore(s => s.role);
+  if (!allowed.includes(role)) return fallback ?? null;
+  return <>{children}</>;
+}
+```
+
+**Testing checkpoint — Phase 4 done when:**
+- [ ] Products: list, create, view detail, edit, delete all work
+- [ ] Variants: create, edit, delete under a product
+- [ ] Inventory overview shows all stock levels with correct numbers
+- [ ] Low stock page filters correctly
+- [ ] Transactions list paginates correctly
+- [ ] Manual transaction entry creates valid records
+- [ ] Suppliers + Customers: full CRUD
+- [ ] Settings: business info updates
+- [ ] Settings: locations add/edit/delete
+- [ ] Settings: invite sends email, accept creates member
+- [ ] Role enforcement: staff cannot access dashboard, financials, or delete
+- [ ] Role enforcement: manager cannot access profit page or team settings
+- [ ] All forms validate with Zod and show inline errors
+
+---
+
+## Phase 5 — Polish, PWA & Launch (Weeks 10–12)
+
+### Goal
+Insights engine, PWA installability, landing page, performance optimization, security hardening, and production deployment.
+
+---
+
+### Week 10 — Insights Engine + PWA
+
+**Files created — Insights:**
+
+| File | Purpose |
+|------|---------|
+| `src/app/(app)/app/insights/page.tsx` | Full insight log with filters |
+| `src/components/insights/InsightCard.tsx` | Single insight card (icon, title, severity badge) |
+| `src/components/insights/InsightList.tsx` | Filterable list |
+| `src/lib/insights/evaluators.ts` | All insight evaluation functions |
+| `src/lib/insights/lowStock.ts` | Low stock check (post-transaction trigger) |
+| `src/lib/insights/reorderSuggestion.ts` | 14-day velocity-based reorder calc |
+| `src/lib/insights/slowMover.ts` | No sales in 21 days + qty > 10 |
+| `src/lib/insights/expiryWarning.ts` | Within 14 days of expiry_date |
+| `src/lib/insights/revenueMilestone.ts` | 20%+ week-over-week revenue growth |
+| `src/lib/insights/topPerformer.ts` | Weekly top 5 products by revenue |
+| `src/app/api/insights/route.ts` | GET: list insights |
+| `src/app/api/insights/[id]/route.ts` | PUT: mark as read |
+| `src/app/api/cron/insights/route.ts` | POST: nightly batch evaluation (Vercel Cron) |
+| `vercel.json` | Cron configuration |
+
+**Insight triggers:**
+
+| Insight Type | Trigger | Method |
+|---|---|---|
+| Low stock | Post-transaction | Synchronous check after stock_levels update |
+| Reorder suggestion | Nightly cron | Batch: query items with 14-day avg daily sales × 7 > current qty |
+| Slow mover | Nightly cron | Batch: no transaction_items in 21 days, qty > 10 |
+| Expiry warning | Nightly cron | Batch: expiry_date ≤ NOW() + 14 days |
+| Revenue milestone | Nightly cron | Compare this week vs last week revenue |
+| Top performer | Weekly cron | Top 5 by SUM(total_price) from transaction_items |
+
+**Vercel Cron** (`vercel.json`):
+
+```json
+{
+  "crons": [
+    {
+      "path": "/api/cron/insights",
+      "schedule": "0 2 * * *"
+    }
+  ]
+}
+```
+
+The cron endpoint is protected with a `CRON_SECRET` env var:
+```typescript
+if (req.headers.get('Authorization') !== `Bearer ${process.env.CRON_SECRET}`) {
+  return Response.json({ error: 'Unauthorized' }, { status: 401 });
+}
+```
+
+**Insight push to chat**: After an insight is created in `insights_log`, a corresponding `chat_messages` row is created with `role: 'system'` and the insight content. Supabase Realtime broadcasts this to connected clients. The chat UI renders system messages with a distinct style (amber background for warnings, teal for info).
+
+**PWA setup** (`next.config.js`):
+
+```javascript
+const withPWA = require('next-pwa')({
+  dest: 'public',
+  disable: process.env.NODE_ENV === 'development',
+  register: true,
+  skipWaiting: true,
+});
+
+module.exports = withPWA({ /* existing next config */ });
+```
+
+**Files created — PWA:**
+
+| File | Purpose |
+|------|---------|
+| `public/manifest.json` | PWA manifest (name, icons, theme_color `#4F46E5`) |
+| `public/icons/icon-192.png` | App icon 192px |
+| `public/icons/icon-512.png` | App icon 512px |
+| `src/components/pwa/InstallPrompt.tsx` | Install banner for mobile browsers |
+
+---
+
+### Week 11 — Landing Page + Public Pages
+
+**Files created:**
+
+| File | Purpose |
+|------|---------|
+| `src/app/(public)/page.tsx` | Landing page |
+| `src/app/(public)/pricing/page.tsx` | Pricing page |
+| `src/app/(public)/terms/page.tsx` | Terms of service |
+| `src/app/(public)/privacy/page.tsx` | Privacy policy |
+| `src/app/(public)/layout.tsx` | Public layout (navbar + footer) |
+| `src/components/landing/Navbar.tsx` | Nav: logo, links with `•` separators, CTA |
+| `src/components/landing/Hero.tsx` | Split hero: left content + right mockup |
+| `src/components/landing/FloatingStatCard.tsx` | Animated stat card (revenue, stock, etc.) |
+| `src/components/landing/HowItWorks.tsx` | 3-step visual explanation |
+| `src/components/landing/Features.tsx` | Feature grid |
+| `src/components/landing/LiveDemo.tsx` | Interactive chat demo (no auth required) |
+| `src/components/landing/Pricing.tsx` | Pricing tier cards |
+| `src/components/landing/Testimonials.tsx` | Testimonial carousel |
+| `src/components/landing/FinalCTA.tsx` | Dark section with big stat + CTA |
+| `src/components/landing/Footer.tsx` | Footer with links |
+| `src/components/landing/LogoStrip.tsx` | Grayscale partner logos |
+
+---
+
+### Week 12 — Testing, Security Hardening, Deploy
+
+**Files created:**
+
+| File | Purpose |
+|------|---------|
+| `src/lib/rateLimit.ts` | Token bucket rate limiter for AI endpoint |
+| `src/components/ui/ErrorBoundary.tsx` | React error boundary |
+| `src/components/ui/LoadingSkeleton.tsx` | Skeleton loaders per page type |
+| `src/components/ui/EmptyState.tsx` | Empty state component |
+| `src/app/not-found.tsx` | Custom 404 page |
+| `src/app/error.tsx` | Custom error page |
+
+**Rate limiting** on `/api/chat`: 20 requests per minute per user. Store counts in a simple in-memory Map (sufficient for Vercel serverless — resets on cold start, which is acceptable for v1). Use `X-RateLimit-Remaining` headers.
+
+**Testing checklist** — see Part 8 (MVP Launch Checklist) for the complete list.
+
+**Production deployment:**
+1. Supabase: create production project, run all migrations, verify RLS
+2. Vercel: connect GitHub repo, set env vars, deploy
+3. DNS: point custom domain
+4. SSL: automatic via Vercel
+5. Monitoring: Vercel Analytics + Supabase Dashboard
+
+**Testing checkpoint — Phase 5 done when:**
+- [ ] Insights generate correctly (test each type manually)
+- [ ] Cron endpoint produces insights batch
+- [ ] Insights appear in chat stream via Realtime
+- [ ] PWA installs on Android Chrome and iOS Safari
+- [ ] Landing page renders on all breakpoints (320px → 1440px)
+- [ ] All public pages load (pricing, terms, privacy)
+- [ ] Rate limiter blocks excessive AI requests
+- [ ] Error boundaries catch and display errors gracefully
+- [ ] 404 page shows for invalid routes
+- [ ] Production build (`npm run build`) completes without errors
+- [ ] Lighthouse: Performance > 90, Accessibility > 95, SEO > 95

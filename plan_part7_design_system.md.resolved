@@ -1,0 +1,370 @@
+# Part 7 — Design System Implementation
+
+---
+
+## Design System Implementation
+
+### 7.1 Global CSS Variables (`src/app/globals.css`)
+
+```css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  /* Brand Core */
+  --stoka-blue: #4F46E5;
+  --stoka-blue-dark: #3730A3;
+  --stoka-teal: #0F766E;
+  --stoka-teal-light: #14B8A6;
+  --stoka-green: #10B981;
+  --stoka-amber: #F59E0B;
+  --stoka-red: #EF4444;
+
+  /* Surfaces — Light Mode (default) */
+  --bg-base: #F0F0F0;
+  --bg-app: #F9FAFB;
+  --surface: #FFFFFF;
+  --surface-hover: #F3F4F6;
+  --border: #E5E7EB;
+  --border-strong: #D1D5DB;
+
+  /* Surfaces — Dark Mode (Dashboard) */
+  --dark-bg: #12121F;
+  --dark-surface: #1A1A2E;
+  --dark-sidebar: #1C1C2E;
+  --dark-border: rgba(255, 255, 255, 0.08);
+
+  /* Text */
+  --text-primary: #111827;
+  --text-secondary: #374151;
+  --text-muted: #6B7280;
+  --text-dark-primary: #FFFFFF;
+  --text-dark-muted: #94A3B8;
+
+  /* Operation Tile Pastels */
+  --tile-purchase: #FEF3C7;
+  --tile-sale: #CCFBF1;
+  --tile-stock: #EDE9FE;
+  --tile-adjust: #FFE4E6;
+  --tile-purchase-icon: #D97706;
+  --tile-sale-icon: #0F766E;
+  --tile-stock-icon: #7C3AED;
+  --tile-adjust-icon: #E11D48;
+
+  /* Chat */
+  --bubble-user: #4F46E5;
+  --bubble-ai: #FFFFFF;
+  --bubble-ai-border: #E5E7EB;
+}
+```
+
+### 7.2 Tailwind Config Extension (`tailwind.config.ts`)
+
+```typescript
+import type { Config } from 'tailwindcss';
+
+const config: Config = {
+  darkMode: 'class',
+  content: ['./src/**/*.{ts,tsx}'],
+  theme: {
+    extend: {
+      fontFamily: {
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
+      },
+      colors: {
+        brand: {
+          blue: 'var(--stoka-blue)',
+          'blue-dark': 'var(--stoka-blue-dark)',
+          teal: 'var(--stoka-teal)',
+          'teal-light': 'var(--stoka-teal-light)',
+          green: 'var(--stoka-green)',
+          amber: 'var(--stoka-amber)',
+          red: 'var(--stoka-red)',
+        },
+        surface: {
+          base: 'var(--bg-base)',
+          app: 'var(--bg-app)',
+          DEFAULT: 'var(--surface)',
+          hover: 'var(--surface-hover)',
+        },
+        dark: {
+          bg: 'var(--dark-bg)',
+          surface: 'var(--dark-surface)',
+          sidebar: 'var(--dark-sidebar)',
+          border: 'var(--dark-border)',
+        },
+        tile: {
+          purchase: 'var(--tile-purchase)',
+          sale: 'var(--tile-sale)',
+          stock: 'var(--tile-stock)',
+          adjust: 'var(--tile-adjust)',
+          'purchase-icon': 'var(--tile-purchase-icon)',
+          'sale-icon': 'var(--tile-sale-icon)',
+          'stock-icon': 'var(--tile-stock-icon)',
+          'adjust-icon': 'var(--tile-adjust-icon)',
+        },
+        bubble: {
+          user: 'var(--bubble-user)',
+          ai: 'var(--bubble-ai)',
+          'ai-border': 'var(--bubble-ai-border)',
+        },
+      },
+      borderColor: {
+        DEFAULT: 'var(--border)',
+        strong: 'var(--border-strong)',
+      },
+      textColor: {
+        primary: 'var(--text-primary)',
+        secondary: 'var(--text-secondary)',
+        muted: 'var(--text-muted)',
+      },
+      letterSpacing: {
+        display: '-0.02em',
+      },
+    },
+  },
+  plugins: [],
+};
+
+export default config;
+```
+
+### 7.3 Component Pattern Class Strings
+
+**Sidebar nav item (desktop, dark):**
+```
+Active:   "flex items-center gap-3 px-3 py-2.5 rounded-lg bg-brand-blue text-white font-medium text-sm"
+Inactive: "flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-dark-muted hover:bg-white/5 text-sm transition-colors"
+Group label: "text-xs font-medium uppercase tracking-wider text-brand-blue/60 px-3 mt-6 mb-2"
+```
+
+**KPI Card (dashboard, dark mode):**
+```
+Container: "bg-dark-surface border border-dark-border rounded-2xl p-6"
+Number:    "text-4xl font-bold text-white tabular-nums font-mono"
+Label:     "text-sm text-text-dark-muted mt-1"
+```
+
+**KPI Card (mobile, light mode):**
+```
+Container: "bg-white border border-DEFAULT rounded-2xl p-4"
+Number:    "text-2xl font-bold tabular-nums"  (color varies: text-brand-blue, text-brand-green, text-brand-red)
+Label:     "text-xs text-muted mt-1"
+```
+
+**Chat bubble (user):**
+```
+"bg-bubble-user text-white rounded-2xl rounded-br-sm px-4 py-3 max-w-[80%] ml-auto text-sm leading-relaxed shadow-sm"
+```
+
+**Chat bubble (AI):**
+```
+"bg-bubble-ai border border-bubble-ai-border rounded-2xl rounded-bl-sm px-4 py-3 max-w-[80%] mr-auto text-sm leading-relaxed shadow-sm"
+```
+
+**Chat bubble (system/insight):**
+```
+Warning:  "bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 max-w-[80%] mx-auto text-sm"
+Info:     "bg-teal-50 border border-teal-200 rounded-2xl px-4 py-3 max-w-[80%] mx-auto text-sm"
+```
+
+**Confirmation card:**
+```
+Container: "bg-white border-2 border-brand-green rounded-2xl p-5 relative overflow-hidden"
+Left bar:  "absolute left-0 top-0 bottom-0 w-1 bg-brand-green" (or intent color)
+Confirm:   "bg-brand-green hover:bg-brand-green/90 text-white px-6 py-2.5 rounded-xl font-medium text-sm transition-colors"
+Cancel:    "border border-DEFAULT text-secondary hover:bg-surface-hover px-6 py-2.5 rounded-xl font-medium text-sm transition-colors"
+```
+
+**Quick-action pill:**
+```
+"bg-white border border-DEFAULT rounded-full px-4 py-2.5 text-sm text-secondary hover:bg-surface-hover transition-colors cursor-pointer"
+```
+
+**Operation tile (mobile home):**
+```
+Container (purchase): "bg-tile-purchase rounded-2xl p-5 flex flex-col gap-2"
+Icon container:       "w-10 h-10 rounded-xl bg-tile-purchase-icon/20 flex items-center justify-center"
+Icon:                 "w-5 h-5 text-tile-purchase-icon"
+Title:                "font-semibold text-primary text-sm mt-1"
+Subtitle:             "text-xs text-muted"
+```
+
+**Status badges:**
+```
+Confirmed: "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-teal-100 text-teal-800"
+Pending:   "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-800"
+Cancelled: "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-red-100 text-red-800"
+Low stock: "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-800"
+```
+
+**Attribute pills (transaction detail):**
+```
+"inline-flex items-center rounded-full px-2 py-0.5 text-xs bg-gray-100 text-secondary"
+Separator: "mx-1 text-muted" (the · character)
+```
+
+**Button variants:**
+```
+Primary:   "bg-brand-blue hover:bg-brand-blue-dark text-white px-6 py-2.5 rounded-xl font-medium text-sm transition-colors"
+Secondary: "border border-DEFAULT text-primary hover:bg-surface-hover px-6 py-2.5 rounded-xl font-medium text-sm transition-colors"
+Danger:    "bg-brand-red hover:bg-red-600 text-white px-6 py-2.5 rounded-xl font-medium text-sm transition-colors"
+Ghost:     "text-muted hover:text-primary hover:bg-surface-hover px-3 py-2 rounded-lg text-sm transition-colors"
+```
+
+**Landing page navbar:**
+```
+Container: "fixed top-0 w-full z-50 transition-all duration-300"
+Scrolled:  "bg-white/80 backdrop-blur-xl border-b border-DEFAULT shadow-sm"
+Link separator: "text-muted mx-3" (• character)
+CTA pill:  "bg-brand-blue text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-brand-blue-dark transition-colors"
+```
+
+**Insights summary card (dashboard, purple gradient):**
+```
+"bg-gradient-to-br from-brand-blue to-purple-600 rounded-2xl p-6 text-white"
+```
+
+---
+
+### 7.4 Dark Mode vs Light Mode Mapping
+
+| Screen | Mode | Rationale |
+|--------|------|-----------|
+| Landing page | Light (silver-gray `#F0F0F0` base) | Premium feel, from reference imgs 6/7 |
+| Auth pages | Light | Clean, no distraction |
+| Onboarding | Light | Approachable |
+| Chat | Light (white content area) | Readability for messages |
+| Chat sidebar (desktop) | Dark (`--dark-sidebar`) | Visual separation, from ref img 3 |
+| Dashboard (desktop) | Dark (`--dark-bg`) | Data visibility, from ref img 4 |
+| Dashboard (mobile) | Light | Readability on small screens, from ref img 9 |
+| Products / Inventory / Transactions | Light | Standard CRUD, readability |
+| Settings | Light | Standard forms |
+| Final CTA section (landing) | Dark (`#0D0D0D`) | Dramatic contrast, from ref img 8 |
+
+### 7.5 Framer Motion Animation Specs
+
+```typescript
+// src/lib/animations.ts
+
+export const chatMessageAppear = {
+  initial: { opacity: 0, y: 10 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.2, ease: 'easeOut' },
+};
+
+export const floatingStatCard = {
+  animate: {
+    y: [0, -8, 0],
+  },
+  transition: {
+    duration: 3,
+    repeat: Infinity,
+    ease: 'easeInOut',
+  },
+};
+
+export const operationTileStagger = {
+  container: {
+    animate: { transition: { staggerChildren: 0.05 } },
+  },
+  item: {
+    initial: { opacity: 0, scale: 0.95 },
+    animate: { opacity: 1, scale: 1 },
+    transition: { duration: 0.15 },
+  },
+};
+
+export const confirmationCardAppear = {
+  initial: { opacity: 0, scale: 0.95 },
+  animate: { opacity: 1, scale: 1 },
+  transition: { duration: 0.15, ease: 'easeOut' },
+};
+
+export const sidebarSlide = {
+  initial: { x: -240 },
+  animate: { x: 0 },
+  exit: { x: -240 },
+  transition: { duration: 0.2, ease: 'easeInOut' },
+};
+
+export const fadeIn = {
+  initial: { opacity: 0 },
+  animate: { opacity: 1 },
+  transition: { duration: 0.3 },
+};
+```
+
+### 7.6 Responsive Breakpoints
+
+```
+Mobile first. Base styles = mobile (< 640px).
+sm:  640px  — larger phones landscape
+md:  768px  — tablets
+lg:  1024px — small laptops, desktop (sidebar appears)
+xl:  1280px — full desktop (context panel appears)
+```
+
+**Breakpoint behaviors:**
+- `< lg`: Single column. Bottom nav visible. Sidebar hidden (slide-out drawer on menu tap). No context panel.
+- `≥ lg`: Three-column. Sidebar visible (240px). Content center. No context panel unless opened.
+- `≥ xl`: Three-column. Sidebar (240px). Content center. Context panel (320px) visible when relevant (product detail, transaction detail).
+
+### 7.7 Mobile Bottom Nav
+
+```tsx
+// Icons from Lucide React
+import { MessageSquare, LayoutDashboard, Package, Settings } from 'lucide-react';
+
+const tabs = [
+  { icon: MessageSquare, label: 'Chat', path: '/app/chat' },
+  { icon: LayoutDashboard, label: 'Dashboard', path: '/app/dashboard' },
+  { icon: Package, label: 'Products', path: '/app/products' },
+  { icon: Settings, label: 'Settings', path: '/app/settings' },
+];
+```
+
+```
+Container: "fixed bottom-0 left-0 right-0 bg-white border-t border-DEFAULT px-4 py-2 flex justify-around items-center lg:hidden z-40"
+Active:    "flex flex-col items-center gap-0.5 text-brand-blue"
+Inactive:  "flex flex-col items-center gap-0.5 text-muted"
+Icon size: "w-5 h-5"
+Label:     "text-[10px] font-medium"
+```
+
+### 7.8 Mobile Chat Header (Teal Gradient)
+
+```
+Container: "bg-gradient-to-br from-brand-teal to-brand-teal-light px-4 py-5 text-white"
+Logo:      centered, 28px height
+Biz name:  "text-sm font-medium text-white/90 mt-1 text-center"
+```
+
+### 7.9 Landing Page Hero Layout
+
+```
+Section:   "bg-surface-base min-h-screen px-6 lg:px-20 py-20"
+Grid:      "grid lg:grid-cols-2 gap-12 items-center max-w-7xl mx-auto"
+Left (content):
+  Badge:     "inline-flex items-center gap-2 bg-white rounded-full px-4 py-1.5 text-sm text-muted shadow-sm mb-6"
+  Headline:  "text-5xl lg:text-7xl font-black tracking-display leading-[1.05] text-primary"
+  Subhead:   "text-lg text-secondary mt-6 max-w-md"
+  CTA row:   "flex gap-4 mt-8"
+  Primary:   "bg-brand-blue text-white px-8 py-3.5 rounded-full text-base font-semibold"
+  Secondary: "border-2 border-primary text-primary px-8 py-3.5 rounded-full text-base font-semibold"
+Right (mockup):
+  Phone frame: "relative w-[300px] h-[600px] mx-auto" with floating stat cards positioned absolute
+```
+
+### 7.10 Final CTA Section (Dark)
+
+```
+Section:  "bg-[#0D0D0D] py-24 px-6"
+Stat:     "text-7xl lg:text-9xl font-black text-white tracking-display"
+Label:    "text-xl text-white/60 mt-4 max-w-md"
+CTA:      "bg-brand-teal-light text-white px-8 py-4 rounded-full text-lg font-semibold mt-8 hover:bg-brand-teal transition-colors"
+```
