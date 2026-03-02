@@ -32,16 +32,19 @@ export function StepFirstChat() {
                 )}
             </div>
 
-            <h2 className="text-2xl font-bold text-gray-900">You're all set!</h2>
+            <h2 className="text-3xl font-bold text-gray-900 tracking-tight">You're ready to fly!</h2>
 
             {!isDone ? (
                 <>
-                    <p className="mt-2 text-sm text-gray-600">
-                        Let's see how Stoka works. Hit send to test your first chat transaction.
+                    <p className="mt-3 text-gray-600 leading-relaxed max-w-sm mx-auto">
+                        Managing stock should be as easy as sending a text. Try it out now—send a test message to see the magic.
                     </p>
 
-                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-left my-6 mx-auto max-w-sm shadow-inner shadow-gray-100">
-                        <p className="text-sm font-medium italic text-gray-800">
+                    <div className="bg-blue-50/50 border border-blue-100 rounded-2xl p-6 text-left my-8 mx-auto max-w-sm relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-2 opacity-10">
+                            <MessageSquare className="w-12 h-12" />
+                        </div>
+                        <p className="text-sm font-medium text-blue-900 italic leading-relaxed">
                             "I just bought 50 boxes of paracetamol for ₦200 each"
                         </p>
                     </div>
@@ -49,7 +52,7 @@ export function StepFirstChat() {
                     <button
                         onClick={handleSimulate}
                         disabled={isSimulating}
-                        className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                        className="w-full flex justify-center py-3 px-4 border border-transparent rounded-xl shadow-md text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 transition-all transform hover:scale-[1.02]"
                     >
                         {isSimulating ? 'Processing with AI...' : 'Send Test Message'}
                     </button>

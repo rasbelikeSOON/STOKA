@@ -49,18 +49,18 @@ export function StepCurrencyLocation({ onNext, data }: { onNext: () => void, dat
     return (
         <div className="space-y-6">
             <div className="text-center">
-                <h2 className="text-2xl font-bold text-gray-900">Store Defaults</h2>
-                <p className="mt-2 text-sm text-gray-600">Set your primary location and currency</p>
+                <h2 className="text-3xl font-bold text-gray-900 tracking-tight">Setting the stage</h2>
+                <p className="mt-3 text-gray-600 leading-relaxed">Where do you track your stock? This will be your primary home base in Stoka.</p>
             </div>
 
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 pt-4">
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="locationName">Primary Location Name</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2" htmlFor="locationName">Primary Location Name</label>
                     <input
                         id="locationName"
                         type="text"
                         {...register('locationName')}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all outline-none text-gray-900"
                         placeholder="e.g. Main Store, Downtown Branch"
                     />
                     {errors.locationName && <p className="mt-1 text-sm text-red-600">{errors.locationName.message}</p>}

@@ -5,10 +5,12 @@ import { UserPlus, Shield, Trash, Mail } from 'lucide-react'
 import { toast } from 'sonner'
 import { RoleGate } from '@/components/auth/RoleGate'
 import { format } from 'date-fns'
+import { InviteModal } from '@/components/settings/InviteModal'
 
 export default function TeamSettingsPage() {
   const [members, setMembers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [isInviteOpen, setIsInviteOpen] = useState(false)
 
   const fetchTeam = async () => {
     try {
@@ -65,13 +67,19 @@ export default function TeamSettingsPage() {
         </div>
         <RoleGate allowed={['owner']}>
           <button
-            onClick={() => toast.info('Invitations functionality would go here (requires email integration)')}
+            onClick={() => setIsInviteOpen(true)}
             className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition"
           >
             <UserPlus className="w-4 h-4" /> Invite Member
           </button>
         </RoleGate>
       </div>
+
+      <InviteModal
+        isOpen={isInviteOpen}
+        onClose={() => setIsInviteOpen(false)}
+        onSuccess={fetchTeam}
+      />
 
       <div className="bg-white dark:bg-[#16191f] rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">

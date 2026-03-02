@@ -1,10 +1,11 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { Plus } from 'lucide-react'
+import { Plus, Download } from 'lucide-react'
 import Link from 'next/link'
 import { TransactionTable } from '@/components/transactions/TransactionTable'
 import { RoleGate } from '@/components/auth/RoleGate'
+import { exportToCSV } from '@/lib/utils/export'
 
 export default function TransactionsPage() {
   const [txs, setTxs] = useState<any[]>([])
@@ -47,15 +48,24 @@ export default function TransactionsPage() {
           <p className="text-sm text-gray-500 dark:text-gray-400">View sales, purchases, and other stock movements</p>
         </div>
 
-        <RoleGate allowed={['owner', 'manager']}>
-          <Link
-            href="/app/transactions/new"
-            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition whitespace-nowrap"
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => exportToCSV(txs, `stoka-transactions-${new Date().toISOString().split('T')[0]}`)}
+            className="hidden sm:inline-flex items-center justify-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 font-medium transition"
           >
-            <Plus className="w-4 h-4" />
-            Manual Entry
-          </Link>
-        </RoleGate>
+            <Download className="w-4 h-4" />
+            Export CSV
+          </button>
+          <RoleGate allowed={['owner', 'manager']}>
+            <Link
+              href="/app/transactions/new"
+              className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition whitespace-nowrap"
+            >
+              <Plus className="w-4 h-4" />
+              Manual Entry
+            </Link>
+          </RoleGate>
+        </div>
       </div>
 
       <TransactionTable data={txs} loading={loading} />
