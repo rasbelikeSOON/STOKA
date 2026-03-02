@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { reorderSuggestion } from '@/lib/insights/evaluators'
+import {
+    reorderSuggestion,
+    slowMoverEvaluator,
+    expiryWarningEvaluator,
+    topPerformerEvaluator
+} from '@/lib/insights/evaluators'
 import { rateLimit } from '@/lib/rateLimit'
 
 // This endpoint is hit by Vercel Cron
@@ -27,9 +32,14 @@ export async function POST(request: Request) {
 
         // Run evaluators for each business
         for (const biz of (businesses || [])) {
-            // Example: 14-day velocity-based reorder calculations
-            const reorders = await reorderSuggestion(supabaseAdmin, biz.id)
-            insightsGenerated += reorders
+            // Run all evaluators in parallel for the business
+            const results = await Promise.all([
+                reorderSuggestion(supabaseAdmin, biz.id),
+                slowMoverEvaluator(supabaseAdmin, biz.id),
+                expiryWarningEvaluator(supabaseAdmin, biz.id),
+                topPerformerEvaluator(supabaseAdmin, biz.id)
+            ])
+            insightsGenerated += results.reduce((a, b) => a + b, 0)
         }
 
         return NextResponse.json({ success: true, count: insightsGenerated })

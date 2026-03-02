@@ -137,6 +137,89 @@ export default function ProductDetailPage() {
           )}
         </div>
       </div>
+
+      {/* History Section */}
+      <div>
+        <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Product History</h2>
+        <div className="bg-white dark:bg-[#16191f] rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+          {/* We'll use a simplified list since the global tx table might be overkill for a product specific view initially, 
+              but let's try to reuse the table if we can get the data filtered correctly */}
+          <TransactionHistory productId={id as string} />
+        </div>
+      </div>
+    </div >
+  )
+}
+
+function TransactionHistory({ productId }: { productId: string }) {
+  const [data, setData] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function load() {
+      // NOTE: We need to filter by product ID. Since our generic API doesn't do it easily, 
+      // we'll fetch all and filter client-side for now, OR better, we would have a specific endpoint.
+      // For MVP, we'll fetch recent transactions and filter.
+      try {
+        const res = await fetch('/api/transactions?limit=50')
+        if (res.ok) {
+          const result = await res.json()
+          // Filter transactions that contain this product
+          const filtered = result.data.filter((tx: any) =>
+            tx.transaction_items?.some((item: any) => item.product_variants?.product_id === productId)
+          )
+          setData(filtered)
+        }
+      } catch (e) {
+        console.error(e)
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+  }, [productId])
+
+  if (loading) return <div className="p-8 text-center text-gray-400">Loading history...</div>
+  if (data.length === 0) return <div className="p-8 text-center text-gray-500 italic">No transactions found for this product.</div>
+
+  return (
+    <div className="p-2 overflow-x-auto">
+      <table className="w-full text-sm text-left">
+        <thead className="text-xs text-gray-500 uppercase border-b border-gray-100 dark:border-gray-800">
+          <tr>
+            <th className="px-4 py-3">Date</th>
+            <th className="px-4 py-3">Type</th>
+            <th className="px-4 py-3">Qty</th>
+            <th className="px-4 py-3">Amount</th>
+            <th className="px-4 py-3">Status</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
+          {data.map((tx) => {
+            // Find specific item for this product
+            const item = tx.transaction_items.find((i: any) => i.product_variants.product_id === productId)
+            return (
+              <tr key={tx.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                <td className="px-4 py-3 text-gray-500">{new Date(tx.created_at).toLocaleDateString()}</td>
+                <td className="px-4 py-3">
+                  <span className={`capitalize px-2 py-0.5 rounded text-[10px] font-bold ${tx.type === 'sale' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'
+                    }`}>
+                    {tx.type}
+                  </span>
+                </td>
+                <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{item?.quantity}</td>
+                <td className="px-4 py-3 text-gray-900 dark:text-white">₦{item?.total_price.toLocaleString()}</td>
+                <td className="px-4 py-3">
+                  <span className={`text-[10px] font-medium ${tx.status === 'confirmed' ? 'text-emerald-500' : 'text-amber-500'
+                    }`}>
+                    {tx.status}
+                  </span>
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
     </div>
   )
 }

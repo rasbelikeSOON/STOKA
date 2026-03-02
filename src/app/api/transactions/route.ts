@@ -27,6 +27,11 @@ export async function GET(request: Request) {
         const { data: member } = await supabase.from('business_members').select('business_id').eq('user_id', user.id).single()
         if (!member) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
+        const type = searchParams.get('type')
+        const status = searchParams.get('status')
+        const supplierId = searchParams.get('supplierId')
+        const customerId = searchParams.get('customerId')
+
         let query = supabase
             .from('transactions')
             .select(`
@@ -41,8 +46,13 @@ export async function GET(request: Request) {
         )
       `)
             .eq('business_id', member.business_id)
-            .order('created_at', { ascending: false })
-            .limit(limit)
+
+        if (type) query = query.eq('type', type)
+        if (status) query = query.eq('status', status)
+        if (supplierId) query = query.eq('supplier_id', supplierId)
+        if (customerId) query = query.eq('customer_id', customerId)
+
+        query = query.order('created_at', { ascending: false }).limit(limit)
 
         if (cursor) {
             query = query.lt('created_at', cursor)
