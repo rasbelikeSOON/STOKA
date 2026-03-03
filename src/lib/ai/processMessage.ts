@@ -5,14 +5,18 @@ import { getRecentMemories } from '../db/memories'
 import { buildSystemPrompt } from './systemPrompt'
 import { AIResponseSchema, AIResponse } from './schemas'
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
-
 export async function processMessage(
     userMessage: string,
     conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>,
     businessId: string,
     userId: string
 ): Promise<AIResponse> {
+
+    const groqApiKey = process.env.GROQ_API_KEY
+    if (!groqApiKey) {
+        throw new Error('Server misconfiguration: missing GROQ_API_KEY')
+    }
+    const groq = new Groq({ apiKey: groqApiKey })
 
     // 1. Gather Context
     const [context, products, memories] = await Promise.all([
