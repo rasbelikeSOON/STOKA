@@ -2,13 +2,34 @@
 
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts'
 
-const COLORS = ['#4F46E5', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#6366F1']
+const COLORS = [
+    'var(--brand-primary)',
+    '#10B981', // emerald
+    '#F59E0B', // amber
+    '#8B5CF6', // violet
+    '#EC4899', // pink
+    '#06B6D4', // cyan
+]
+
+const CustomTooltip = ({ active, payload }: any) => {
+    if (active && payload && payload.length) {
+        return (
+            <div className="bg-[--text-primary] text-white p-4 rounded-2xl shadow-2xl border border-white/10 backdrop-blur-md">
+                <p className="text-[10px] font-black uppercase tracking-widest text-white/50 mb-1">{payload[0].name}</p>
+                <p className="text-lg font-black tracking-tight">
+                    ₦{Number(payload[0].value).toLocaleString()}
+                </p>
+            </div>
+        )
+    }
+    return null
+}
 
 export function SalesBreakdownChart({ data }: { data: any[] }) {
     if (!data || data.length === 0) {
         return (
-            <div className="w-full h-64 flex items-center justify-center bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-dashed border-gray-200 dark:border-gray-700">
-                <p className="text-sm text-gray-500 dark:text-gray-400">No category sales data.</p>
+            <div className="w-full h-80 flex flex-col items-center justify-center bg-[--surface-muted]/30 rounded-2xl border border-dashed border-[--border]">
+                <p className="text-[10px] text-[--text-muted] uppercase tracking-widest font-black">Limited Data Points</p>
             </div>
         )
     }
@@ -16,33 +37,33 @@ export function SalesBreakdownChart({ data }: { data: any[] }) {
     const chartData = data.sort((a, b) => b.value - a.value)
 
     return (
-        <div className="w-full h-72 pb-4">
+        <div className="w-full h-80">
             <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                     <Pie
                         data={chartData}
                         cx="50%"
-                        cy="45%"
-                        innerRadius={60}
-                        outerRadius={85}
-                        paddingAngle={2}
+                        cy="50%"
+                        innerRadius={70}
+                        outerRadius={100}
+                        paddingAngle={4}
                         dataKey="value"
                         stroke="none"
+                        animationDuration={1500}
                     >
                         {chartData.map((entry, index) => (
                             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                     </Pie>
-                    <Tooltip
-                        contentStyle={{ backgroundColor: '#111827', borderColor: '#374151', borderRadius: '8px', color: '#fff', fontSize: '13px' }}
-                        itemStyle={{ color: '#E0E7FF' }}
-                        formatter={(value: any) => [`₦${value.toLocaleString()}`, 'Revenue']}
-                    />
+                    <Tooltip content={<CustomTooltip />} />
                     <Legend
                         verticalAlign="bottom"
                         height={36}
                         iconType="circle"
-                        wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }}
+                        formatter={(value) => (
+                            <span className="text-[11px] font-bold text-[--text-secondary] uppercase tracking-widest ml-1">{value}</span>
+                        )}
+                        wrapperStyle={{ paddingTop: '20px' }}
                     />
                 </PieChart>
             </ResponsiveContainer>

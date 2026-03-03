@@ -1,7 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
-import { adminAuthClient } from '@/lib/supabase/admin'
+import { getAdminClient } from '@/lib/supabase/admin'
 
 export async function POST(request: Request) {
     try {
@@ -26,6 +26,7 @@ export async function POST(request: Request) {
         if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
         // Find invitation
+        const adminAuthClient = getAdminClient()
         const { data: invite, error: inviteError } = await adminAuthClient
             .from('invitations')
             .select('*')

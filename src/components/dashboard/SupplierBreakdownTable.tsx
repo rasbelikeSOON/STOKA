@@ -12,16 +12,16 @@ export function SupplierBreakdownTable({ data }: { data: any[] }) {
             accessorKey: 'name',
             header: 'Supplier',
             cell: (info: any) => (
-                <div className="font-medium text-gray-900 dark:text-gray-100">
-                    {info.getValue()}
+                <div className="flex flex-col">
+                    <span className="font-black text-[--text-primary] tracking-tight">{info.getValue()}</span>
                 </div>
             )
         },
         {
             accessorKey: 'total_spent',
-            header: 'Total Spent',
+            header: 'Spent Value',
             cell: (info: any) => (
-                <div className="font-medium text-gray-900 dark:text-white">
+                <div className="font-black text-[--text-primary]">
                     ₦{(info.getValue() as number).toLocaleString()}
                 </div>
             )
@@ -35,24 +35,24 @@ export function SupplierBreakdownTable({ data }: { data: any[] }) {
     })
 
     return (
-        <div className="overflow-x-auto text-sm">
+        <div className="overflow-hidden border border-[--border] rounded-2xl bg-white shadow-sm">
             <table className="w-full text-left border-collapse">
                 <thead>
                     {table.getHeaderGroups().map(headerGroup => (
-                        <tr key={headerGroup.id} className="border-b border-gray-200 dark:border-gray-700">
+                        <tr key={headerGroup.id} className="bg-[--surface-muted] border-b border-[--border]">
                             {headerGroup.headers.map(header => (
-                                <th key={header.id} className="pb-3 pt-2 px-4 font-medium text-gray-500 dark:text-gray-400">
+                                <th key={header.id} className="py-4 px-6 text-[10px] font-black text-[--text-muted] uppercase tracking-widest">
                                     {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                                 </th>
                             ))}
                         </tr>
                     ))}
                 </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                <tbody className="divide-y divide-[--border]">
                     {table.getRowModel().rows.map(row => (
-                        <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                        <tr key={row.id} className="hover:bg-[--surface-muted]/50 transition-colors group">
                             {row.getVisibleCells().map(cell => (
-                                <td key={cell.id} className="py-3 px-4 whitespace-nowrap">
+                                <td key={cell.id} className="py-5 px-6 whitespace-nowrap">
                                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                                 </td>
                             ))}
@@ -60,8 +60,8 @@ export function SupplierBreakdownTable({ data }: { data: any[] }) {
                     ))}
                     {data.length === 0 && (
                         <tr>
-                            <td colSpan={columns.length} className="py-8 text-center text-gray-500 dark:text-gray-400">
-                                No purchase data found for this period.
+                            <td colSpan={columns.length} className="py-12 text-center text-[11px] font-bold text-[--text-muted] uppercase tracking-widest">
+                                No supplier data found
                             </td>
                         </tr>
                     )}

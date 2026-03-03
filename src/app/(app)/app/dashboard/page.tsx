@@ -1,13 +1,14 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { DollarSign, ShoppingCart, TrendingUp, AlertTriangle, Loader2 } from 'lucide-react'
+import { DollarSign, ShoppingCart, TrendingUp, AlertTriangle, Loader2, Calendar } from 'lucide-react'
 import { KPICard } from '@/components/dashboard/KPICard'
 import { KPIGrid } from '@/components/dashboard/KPIGrid'
 import { RevenueChart } from '@/components/dashboard/RevenueChart'
 import { DateRangeFilter } from '@/components/dashboard/DateRangeFilter'
 import { InsightsSummaryCard } from '@/components/dashboard/InsightsSummaryCard'
 import { useBusinessContext } from '@/lib/hooks/useBusinessContext'
+import { Button } from '@/components/ui/Button'
 
 export default function DashboardOverview() {
   const { businessId } = useBusinessContext()
@@ -33,64 +34,91 @@ export default function DashboardOverview() {
   }, [businessId, days])
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 space-y-6">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="mb-10 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Dashboard Overview</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">Key metrics and revenue trends</p>
+          <h1 className="text-3xl font-black text-[--text-primary] tracking-tight">Performance Overview</h1>
+          <p className="mt-1 text-[--text-muted] font-medium">Real-time business metrics and financial health</p>
         </div>
-        <DateRangeFilter days={days} setDays={setDays} />
+        <div className="flex items-center gap-4">
+          <DateRangeFilter days={days} setDays={setDays} />
+        </div>
       </div>
 
       {loading ? (
-        <div className="h-96 flex items-center justify-center">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-600 dark:text-blue-500" />
+        <div className="h-[60vh] flex flex-col items-center justify-center">
+          <Loader2 className="h-12 w-12 animate-spin text-[--brand-primary] mb-4 opacity-70" />
+          <p className="text-[--text-muted] font-bold uppercase tracking-widest text-[10px]">Syncing live metrics...</p>
         </div>
       ) : data ? (
-        <>
+        <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
           <InsightsSummaryCard count={data.lowStockCount > 0 ? 1 : 0} />
 
           <KPIGrid>
             <KPICard
-              title="Total Sales Revenue"
+              title="Sales Revenue"
               value={`₦${(data.totalRevenue || 0).toLocaleString()}`}
+              trend="Current Period"
               icon={DollarSign}
             />
             <KPICard
-              title="Total Purchases"
+              title="Inventory Spend"
               value={`₦${(data.totalPurchases || 0).toLocaleString()}`}
+              trend="Purchase Value"
               icon={ShoppingCart}
             />
             <KPICard
               title="Gross Profit"
               value={`₦${(data.grossProfit || 0).toLocaleString()}`}
-              trend={`${(data.profitMargin || 0).toFixed(1)}% margin`}
-              trendDirection={data.profitMargin > 0 ? 'up' : 'neutral'}
+              trend={`${(data.profitMargin || 0).toFixed(1)}% Margin`}
+              trendDirection={data.profitMargin > 15 ? 'up' : 'neutral'}
               icon={TrendingUp}
             />
             <KPICard
-              title="Low Stock Items"
+              title="Stock Alerts"
               value={data.lowStockCount || 0}
-              trend="Requires Action"
-              trendDirection={data.lowStockCount > 0 ? 'down' : 'neutral'}
+              trend={data.lowStockCount > 0 ? "Action Required" : "Stock Healthy"}
+              trendDirection={data.lowStockCount > 0 ? 'down' : 'up'}
               icon={AlertTriangle}
             />
           </KPIGrid>
 
-          {/* Charts */}
-          <div className="mt-8 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6">
-            <div className="mb-6">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Revenue Trend</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Sales velocity over the last {days} days</p>
+          {/* Main Chart Section */}
+          <div className="bg-white rounded-3xl border border-[--border] shadow-sm p-8 group hover:shadow-xl hover:shadow-[--brand-primary]/5 transition-all duration-500">
+            <div className="flex items-center justify-between mb-10">
+              <div>
+                <h2 className="text-xl font-black text-[--text-primary] tracking-tight">Revenue Velocity</h2>
+                <p className="text-[11px] font-black text-[--text-muted] uppercase tracking-widest mt-1">Daily sales distribution • Last {days} days</p>
+              </div>
+              <div className="h-10 w-10 bg-[--surface-muted] text-[--brand-primary] rounded-xl flex items-center justify-center">
+                <TrendingUp className="w-5 h-5" />
+              </div>
             </div>
             <RevenueChart data={data.revenueChartData || []} />
           </div>
-        </>
+
+          {/* Quick Actions / Reports Footer */}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 py-10 opacity-50 grayscale hover:grayscale-0 hover:opacity-100 transition-all">
+            <p className="text-[11px] font-black text-[--text-muted] uppercase tracking-widest">Available Reports:</p>
+            <div className="flex gap-2">
+              {['Sales', 'Purchases', 'Profit & Loss'].map(report => (
+                <span key={report} className="px-3 py-1 bg-[--surface-muted] text-[--text-secondary] rounded-lg text-[10px] font-bold border border-[--border]">
+                  {report}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
       ) : (
-        <div className="h-96 flex items-center justify-center bg-white dark:bg-gray-800 rounded-xl border border-dashed border-gray-200 dark:border-gray-700">
-          <p className="text-gray-500 dark:text-gray-400">Failed to load dashboard data.</p>
+        <div className="h-96 flex flex-col items-center justify-center bg-white rounded-3xl border border-dashed border-[--border] p-10 text-center">
+          <div className="h-16 w-16 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center mb-4">
+            <AlertTriangle className="w-8 h-8" />
+          </div>
+          <h3 className="text-xl font-bold text-[--text-primary]">Data Link Interrupted</h3>
+          <p className="text-[--text-muted] max-w-xs mx-auto mt-2">We encountered an issue retrieving your dashboard metrics. Please check your connection and try again.</p>
+          <Button variant="outline" className="mt-6 h-11 px-8" onClick={() => window.location.reload()}>Retry Sync</Button>
         </div>
       )}
     </div>

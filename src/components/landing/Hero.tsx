@@ -34,7 +34,7 @@ export function Hero() {
 
                     <div className="flex flex-col sm:flex-row gap-4 mt-10">
                         <Link
-                            href="/signup"
+                            href="/register"
                             className="bg-[#4F46E5] text-white px-8 py-4 rounded-full text-lg font-bold hover:bg-[#3730A3] transition-all shadow-xl shadow-blue-500/20 flex items-center justify-center gap-2 group"
                         >
                             Get Started Free <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />

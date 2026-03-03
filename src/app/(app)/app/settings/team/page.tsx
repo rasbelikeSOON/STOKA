@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { UserPlus, Shield, Trash, Mail } from 'lucide-react'
+import { UserPlus, Shield, Trash, Mail, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { RoleGate } from '@/components/auth/RoleGate'
 import { format } from 'date-fns'
@@ -58,17 +58,17 @@ export default function TeamSettingsPage() {
 
   return (
     <div className="max-w-4xl">
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-8 flex items-end justify-between">
         <div>
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white">Team & Roles</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Manage who has access to your business and what they can do.
+          <h2 className="text-2xl font-black text-[--text-primary] tracking-tight">Team & Roles</h2>
+          <p className="text-[10px] font-black text-[--text-muted] uppercase tracking-widest mt-2">
+            Access control & member management
           </p>
         </div>
         <RoleGate allowed={['owner']}>
           <button
             onClick={() => setIsInviteOpen(true)}
-            className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition"
+            className="h-12 px-8 bg-[#1D4ED8] text-white rounded-xl font-black text-[11px] uppercase tracking-widest hover:bg-[#1e40af] transition-all flex items-center gap-2 shadow-lg shadow-blue-500/20"
           >
             <UserPlus className="w-4 h-4" /> Invite Member
           </button>
@@ -81,44 +81,58 @@ export default function TeamSettingsPage() {
         onSuccess={fetchTeam}
       />
 
-      <div className="bg-white dark:bg-[#16191f] rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-3xl border border-[--border] shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-gray-50 dark:bg-[#16191f] border-b border-gray-200 dark:border-gray-800">
-              <tr>
-                <th className="py-3 px-4 font-medium text-gray-600 dark:text-gray-400">User</th>
-                <th className="py-3 px-4 font-medium text-gray-600 dark:text-gray-400">Role</th>
-                <th className="py-3 px-4 font-medium text-gray-600 dark:text-gray-400">Joined Date</th>
+          <table className="w-full text-left">
+            <thead>
+              <tr className="bg-[--surface-muted] border-b border-[--border]">
+                <th className="py-4 px-6 text-[10px] font-black text-[--text-muted] uppercase tracking-widest">Member</th>
+                <th className="py-4 px-6 text-[10px] font-black text-[--text-muted] uppercase tracking-widest">Role</th>
+                <th className="py-4 px-6 text-[10px] font-black text-[--text-muted] uppercase tracking-widest">Joined</th>
                 <RoleGate allowed={['owner']}>
-                  <th className="py-3 px-4"></th>
+                  <th className="py-4 px-6"></th>
                 </RoleGate>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+            <tbody className="divide-y divide-[--border]">
               {loading ? (
-                <tr><td colSpan={4} className="py-8 text-center text-gray-500 animate-pulse">Loading team...</td></tr>
+                <tr><td colSpan={4} className="py-20 text-center">
+                  <div className="space-y-4">
+                    <div className="h-10 w-10 border-4 border-[--surface-muted] border-t-[--brand-primary] rounded-full animate-spin mx-auto" />
+                    <p className="text-[10px] font-black text-[--text-muted] uppercase tracking-widest">Loading Team...</p>
+                  </div>
+                </td></tr>
+              ) : members.length === 0 ? (
+                <tr><td colSpan={4} className="py-20 text-center">
+                  <div className="space-y-2">
+                    <div className="h-12 w-12 bg-[--surface-muted] rounded-2xl flex items-center justify-center mx-auto mb-4 border border-[--border]">
+                      <Users className="w-6 h-6 text-[--text-muted]" />
+                    </div>
+                    <p className="text-[11px] font-black text-[--text-muted] uppercase tracking-widest">No team members yet</p>
+                  </div>
+                </td></tr>
               ) : members.map(m => (
-                <tr key={m.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30">
-                  <td className="py-3 px-4">
-                    <div className="flex items-center gap-3">
-                      <div className="bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 p-2 rounded-full">
-                        <Mail className="w-4 h-4" />
+                <tr key={m.id} className="hover:bg-[--surface-muted]/30 transition-colors">
+                  <td className="py-5 px-6">
+                    <div className="flex items-center gap-4">
+                      <div className="h-10 w-10 bg-[--brand-primary]/10 text-[--brand-primary] rounded-full flex items-center justify-center text-sm font-black">
+                        {(m.auth_users?.email || '?').charAt(0).toUpperCase()}
                       </div>
-                      <span className="font-medium text-gray-900 dark:text-white">
+                      <span className="font-black text-[--text-primary] tracking-tight">
                         {m.auth_users?.email || 'Unknown Email'}
                       </span>
                     </div>
                   </td>
-                  <td className="py-3 px-4">
+                  <td className="py-5 px-6">
                     <RoleGate allowed={['owner']} fallback={
-                      <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-300 capitalize">
-                        <Shield className="w-3.5 h-3.5" /> {m.role}
+                      <div className="flex items-center gap-2 text-[11px] font-black text-[--text-secondary] uppercase tracking-widest">
+                        <Shield className="w-3.5 h-3.5 text-emerald-500" /> {m.role}
                       </div>
                     }>
                       <select
                         value={m.role}
                         onChange={(e) => handleRoleChange(m.id, e.target.value)}
-                        className="px-2 py-1 bg-white dark:bg-[#0f1115] border border-gray-200 dark:border-gray-700 rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none capitalize text-gray-900 dark:text-white"
+                        className="px-4 py-2 bg-[--surface-muted] border border-[--border] rounded-xl text-sm font-bold focus:ring-2 focus:ring-[--brand-primary] outline-none capitalize text-[--text-primary]"
                       >
                         <option value="owner">Owner</option>
                         <option value="manager">Manager</option>
@@ -126,14 +140,14 @@ export default function TeamSettingsPage() {
                       </select>
                     </RoleGate>
                   </td>
-                  <td className="py-3 px-4 text-gray-600 dark:text-gray-400">
+                  <td className="py-5 px-6 text-[11px] font-bold text-[--text-muted]">
                     {format(new Date(m.created_at), 'MMM d, yyyy')}
                   </td>
                   <RoleGate allowed={['owner']}>
-                    <td className="py-3 px-4 text-right">
+                    <td className="py-5 px-6 text-right">
                       <button
                         onClick={() => handleDelete(m.id)}
-                        className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition"
+                        className="p-2 text-[--text-muted] hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all duration-300"
                       >
                         <Trash className="w-4 h-4" />
                       </button>

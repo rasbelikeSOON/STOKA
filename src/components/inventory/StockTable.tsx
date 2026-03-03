@@ -7,6 +7,7 @@ import {
 } from '@tanstack/react-table'
 import { StockBadge } from '@/components/products/StockBadge'
 import Link from 'next/link'
+import { MapPin, ArrowRight, Box } from 'lucide-react'
 
 export function StockTable({ data, loading }: { data: any[], loading: boolean }) {
     const columns = [
@@ -14,31 +15,50 @@ export function StockTable({ data, loading }: { data: any[], loading: boolean })
             accessorKey: 'product_name',
             header: 'Product',
             cell: (info: any) => (
-                <div className="font-medium text-gray-900 dark:text-gray-100 line-clamp-1">
-                    <Link href={`/app/products/${info.row.original.product_id}`} className="hover:text-blue-600 dark:hover:text-blue-400">
+                <div className="flex flex-col">
+                    <Link
+                        href={`/app/products/${info.row.original.product_id}`}
+                        className="font-bold text-[--text-primary] hover:text-[--brand-primary] transition-colors leading-tight"
+                    >
                         {info.getValue()}
                     </Link>
+                    <span className="text-[10px] text-[--text-muted] font-medium uppercase tracking-tight mt-0.5">
+                        SKU: {info.row.original.sku || 'N/A'}
+                    </span>
                 </div>
             )
         },
         {
-            accessorKey: 'sku',
-            header: 'SKU',
-            cell: (info: any) => <span className="text-gray-500 dark:text-gray-400 font-mono text-xs bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded">{info.getValue()}</span>
-        },
-        {
             accessorKey: 'location_name',
-            header: 'Location',
-            cell: (info: any) => <div className="text-gray-600 dark:text-gray-300">{info.getValue()}</div>
+            header: 'Storage Location',
+            cell: (info: any) => (
+                <div className="flex items-center gap-2">
+                    <MapPin className="h-3 w-3 text-gray-400" />
+                    <span className="text-sm font-medium text-[--text-secondary]">
+                        {info.getValue() || 'Primary Warehouse'}
+                    </span>
+                </div>
+            )
         },
         {
             accessorKey: 'quantity',
-            header: 'Stock Level',
+            header: 'Stock Levels',
             cell: (info: any) => (
-                <div className="flex items-center gap-2">
-                    <span className="font-bold text-gray-900 dark:text-gray-100">{info.getValue()}</span>
+                <div className="flex items-center gap-4">
+                    <span className="text-[--text-primary] font-black text-lg min-w-[30px]">{info.getValue()}</span>
                     <StockBadge quantity={info.getValue()} threshold={info.row.original.reorder_threshold} />
                 </div>
+            )
+        },
+        {
+            id: 'actions',
+            cell: (info: any) => (
+                <Link
+                    href={`/app/products/${info.row.original.product_id}`}
+                    className="p-2 text-gray-400 hover:text-[--brand-primary] rounded-xl hover:bg-[--surface-muted] transition-all inline-flex items-center justify-center"
+                >
+                    <ArrowRight className="w-5 h-5" />
+                </Link>
             )
         }
     ]
@@ -50,42 +70,54 @@ export function StockTable({ data, loading }: { data: any[], loading: boolean })
     })
 
     if (loading && data.length === 0) {
-        return <div className="p-8 text-center text-gray-500 dark:text-gray-400 animate-pulse">Loading stock data...</div>
+        return (
+            <div className="p-12 text-center text-[--text-muted] bg-white rounded-2xl border border-[--border] shadow-sm animate-pulse">
+                Syncing inventory data...
+            </div>
+        )
     }
 
     return (
-        <div className="overflow-x-auto text-sm bg-white dark:bg-[#0f1115] rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm">
-            <table className="w-full text-left border-collapse">
-                <thead className="bg-gray-50 dark:bg-[#16191f]">
-                    {table.getHeaderGroups().map(headerGroup => (
-                        <tr key={headerGroup.id} className="border-b border-gray-200 dark:border-gray-800">
-                            {headerGroup.headers.map(header => (
-                                <th key={header.id} className="py-3 px-4 font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">
-                                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                                </th>
-                            ))}
-                        </tr>
-                    ))}
-                </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                    {table.getRowModel().rows.map(row => (
-                        <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
-                            {row.getVisibleCells().map(cell => (
-                                <td key={cell.id} className="py-3 px-4 whitespace-nowrap">
-                                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+        <div className="bg-white rounded-2xl border border-[--border] shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                    <thead className="bg-[--surface-muted]/30 border-b border-[--border]">
+                        {table.getHeaderGroups().map(headerGroup => (
+                            <tr key={headerGroup.id}>
+                                {headerGroup.headers.map(header => (
+                                    <th key={header.id} className="py-4 px-6 text-[11px] font-black text-[--text-muted] uppercase tracking-widest whitespace-nowrap">
+                                        {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                                    </th>
+                                ))}
+                            </tr>
+                        ))}
+                    </thead>
+                    <tbody className="divide-y divide-[--border]/50">
+                        {table.getRowModel().rows.map(row => (
+                            <tr key={row.id} className="group hover:bg-[--surface-muted]/10 transition-colors">
+                                {row.getVisibleCells().map(cell => (
+                                    <td key={cell.id} className="py-4 px-6 whitespace-nowrap">
+                                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                    </td>
+                                ))}
+                            </tr>
+                        ))}
+                        {data.length === 0 && !loading && (
+                            <tr>
+                                <td colSpan={columns.length} className="py-20 text-center text-[--text-muted]">
+                                    <div className="max-w-xs mx-auto">
+                                        <div className="h-12 w-12 bg-[--surface-muted] text-[--brand-primary] rounded-xl flex items-center justify-center mx-auto mb-4">
+                                            <Box className="w-6 h-6" />
+                                        </div>
+                                        <p className="font-bold text-[--text-primary] text-lg mb-1">Inventory is clean</p>
+                                        <p className="text-sm">Available stock across your locations will be itemized here.</p>
+                                    </div>
                                 </td>
-                            ))}
-                        </tr>
-                    ))}
-                    {data.length === 0 && !loading && (
-                        <tr>
-                            <td colSpan={columns.length} className="py-12 text-center text-gray-500 dark:text-gray-400">
-                                No inventory records found. Add stock to your products.
-                            </td>
-                        </tr>
-                    )}
-                </tbody>
-            </table>
+                            </tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
         </div>
     )
 }

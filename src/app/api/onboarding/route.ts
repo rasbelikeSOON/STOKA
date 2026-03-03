@@ -1,7 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
-import { adminAuthClient } from '@/lib/supabase/admin'
+import { getAdminClient } from '@/lib/supabase/admin'
 
 export async function POST(request: Request) {
     try {
@@ -13,32 +13,39 @@ export async function POST(request: Request) {
             process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
             {
                 cookies: {
-                    getAll() {
-                        return cookieStore.getAll()
-                    },
-                    setAll(cookiesToSet) {
-                        try {
-                            cookiesToSet.forEach(({ name, value, options }) =>
-                                cookieStore.set(name, value, options)
-                            )
-                        } catch {
-                            // Ignore
-                        }
-                    }
+                    getAll() { return cookieStore.getAll() },
+                    setAll() { }
                 }
             }
         )
 
-        const { data: { user }, error: authError } = await supabase.auth.getUser()
+        const authHeader = request.headers.get('Authorization')
+        const token = authHeader?.split(' ')[1]
+
+        let user;
+        let authError;
+
+        if (token) {
+            const { data, error } = await supabase.auth.getUser(token)
+            user = data.user
+            authError = error
+        } else {
+            const { data, error } = await supabase.auth.getUser()
+            user = data.user
+            authError = error
+        }
+
+        console.log('Onboarding API - User:', user?.id)
+        if (authError) console.error('Onboarding API - Auth Error:', authError)
 
         if (authError || !user) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+            return NextResponse.json({ error: `Unauthorized: ${authError?.message || 'No user session'}` }, { status: 401 })
         }
 
         // Since RLS blocks insert on businesses unless we allow it, we can either:
         // 1. have a policy allowing INSERT to businesses when auth.uid() is not null (we added this)
-        // OR 2. use the service role key to perform these linked inserts.
         // Let's use the service role key to ensure all 3 inserts succeed atomically or none do.
+        const adminAuthClient = getAdminClient()
 
         // Create business
         const { data: business, error: bizError } = await adminAuthClient

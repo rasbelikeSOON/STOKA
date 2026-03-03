@@ -1,7 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-const publicRoutes = ['/', '/signin', '/signup', '/forgot-password', '/reset-password', '/invite']
+const publicRoutes = ['/signin', '/signup', '/forgot-password', '/reset-password', '/invite']
 
 export async function updateSession(request: NextRequest) {
     let supabaseResponse = NextResponse.next({
@@ -33,19 +33,37 @@ export async function updateSession(request: NextRequest) {
         data: { user },
     } = await supabase.auth.getUser()
 
-    const isPublicPath = publicRoutes.some(route => request.nextUrl.pathname.startsWith(route)) || request.nextUrl.pathname === '/'
+    const pathname = request.nextUrl.pathname
+    const isPublicPath =
+        pathname === '/' ||
+        publicRoutes.some(route => pathname.startsWith(route)) ||
+        pathname.startsWith('/api')
 
-    if (!user && !isPublicPath) {
-        const url = request.nextUrl.clone()
-        url.pathname = '/signin'
-        return NextResponse.redirect(url)
+    const isAppRoute = pathname.startsWith('/app')
+    const isOnboarding = pathname === '/onboarding'
+
+    // 1. Unauthenticated users -> /signin for app routes
+    if (!user && (isAppRoute || isOnboarding)) {
+        return NextResponse.redirect(new URL('/signin', request.url))
     }
 
-    // If user is authenticated and trying to access auth pages, redirect to app
-    if (user && (request.nextUrl.pathname === '/signin' || request.nextUrl.pathname === '/signup')) {
-        const url = request.nextUrl.clone()
-        url.pathname = '/app/chat'
-        return NextResponse.redirect(url)
+    // 2. Authenticated users on auth pages -> /app/chat
+    if (user && (pathname === '/signin' || pathname === '/signup')) {
+        return NextResponse.redirect(new URL('/app/chat', request.url))
+    }
+
+    // 3. Onboarding check for authenticated users
+    if (user && isAppRoute) {
+        // We check if user has a business
+        const { data: member } = await supabase
+            .from('business_members')
+            .select('business_id')
+            .eq('user_id', user.id)
+            .maybeSingle()
+
+        if (!member) {
+            return NextResponse.redirect(new URL('/onboarding', request.url))
+        }
     }
 
     return supabaseResponse

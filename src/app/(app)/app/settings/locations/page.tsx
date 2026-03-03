@@ -1,15 +1,13 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { MapPin, Plus, Trash, Store } from 'lucide-react'
+import { MapPin, Plus, Trash, Store, X, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { RoleGate } from '@/components/auth/RoleGate'
 
 export default function LocationsSettingsPage() {
   const [locations, setLocations] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-
-  // Form state
   const [isAdding, setIsAdding] = useState(false)
   const [newName, setNewName] = useState('')
   const [newAddress, setNewAddress] = useState('')
@@ -34,7 +32,6 @@ export default function LocationsSettingsPage() {
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newName.trim()) return
-
     setSaving(true)
     try {
       const res = await fetch('/api/settings/locations', {
@@ -61,7 +58,6 @@ export default function LocationsSettingsPage() {
       return
     }
     if (!confirm("Delete this location? This cannot be undone.")) return
-
     try {
       const res = await fetch(`/api/settings/locations/${id}`, { method: 'DELETE' })
       if (!res.ok) throw new Error("Failed to delete location")
@@ -74,63 +70,77 @@ export default function LocationsSettingsPage() {
 
   return (
     <div className="max-w-3xl">
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-8 flex items-end justify-between">
         <div>
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white">Locations</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Manage multiple storefronts or warehouses.
+          <h2 className="text-2xl font-black text-[--text-primary] tracking-tight">Locations</h2>
+          <p className="text-[10px] font-black text-[--text-muted] uppercase tracking-widest mt-2">
+            Storefronts, warehouses & distribution centers
           </p>
         </div>
         <RoleGate allowed={['owner', 'manager']}>
           <button
             onClick={() => setIsAdding(!isAdding)}
-            className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 rounded-lg text-sm font-medium transition"
+            className="h-12 px-8 bg-[#1D4ED8] text-white rounded-xl font-black text-[11px] uppercase tracking-widest hover:bg-[#1e40af] transition-all flex items-center gap-2 shadow-lg shadow-blue-500/20"
           >
-            <Plus className="w-4 h-4" /> Add Location
+            {isAdding ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+            {isAdding ? 'Cancel' : 'Add Location'}
           </button>
         </RoleGate>
       </div>
 
       {isAdding && (
-        <form onSubmit={handleAdd} className="mb-6 bg-blue-50/50 dark:bg-blue-900/10 p-4 rounded-xl border border-blue-100 dark:border-blue-900/50 flex flex-col sm:flex-row gap-4">
-          <div className="flex-1">
+        <form onSubmit={handleAdd} className="mb-8 bg-white p-8 rounded-3xl border border-[--brand-primary]/20 shadow-sm space-y-6 animate-in fade-in slide-in-from-top-4 duration-300">
+          <div className="text-[10px] font-black text-[--brand-primary] uppercase tracking-widest mb-1">New Location</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <input
               type="text" required placeholder="Location Name (e.g. Main Store)" value={newName} onChange={e => setNewName(e.target.value)}
-              className="w-full px-3 py-2 bg-white dark:bg-[#0f1115] border border-gray-200 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm text-gray-900 dark:text-white"
+              className="w-full px-5 py-4 bg-[--surface-muted] border border-[--border] rounded-2xl focus:ring-2 focus:ring-[--brand-primary]/10 focus:border-[--brand-primary] text-sm font-bold text-[--text-primary] outline-none transition-all placeholder:text-[--text-muted]/50"
             />
-          </div>
-          <div className="flex-1">
             <input
               type="text" placeholder="Address (Optional)" value={newAddress} onChange={e => setNewAddress(e.target.value)}
-              className="w-full px-3 py-2 bg-white dark:bg-[#0f1115] border border-gray-200 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm text-gray-900 dark:text-white"
+              className="w-full px-5 py-4 bg-[--surface-muted] border border-[--border] rounded-2xl focus:ring-2 focus:ring-[--brand-primary]/10 focus:border-[--brand-primary] text-sm font-bold text-[--text-primary] outline-none transition-all placeholder:text-[--text-muted]/50"
             />
           </div>
-          <div className="flex gap-2">
-            <button type="button" onClick={() => setIsAdding(false)} className="px-3 py-2 text-sm text-gray-600 hover:bg-gray-200 dark:text-gray-400 dark:hover:bg-gray-800 rounded-lg">Cancel</button>
-            <button type="submit" disabled={saving} className="px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">Save</button>
+          <div className="flex justify-end">
+            <button type="submit" disabled={saving} className="h-12 px-10 bg-[#1D4ED8] text-white rounded-xl font-black text-[11px] uppercase tracking-widest hover:bg-[#1e40af] transition-all flex items-center gap-2 shadow-lg shadow-blue-500/20 disabled:opacity-50">
+              {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+              Save Location
+            </button>
           </div>
         </form>
       )}
 
       <div className="grid gap-4">
         {loading ? (
-          <div className="p-8 animate-pulse bg-white dark:bg-[#16191f] rounded-xl border border-gray-200 dark:border-gray-800"></div>
+          <div className="p-20 text-center space-y-4 bg-white rounded-3xl border border-[--border]">
+            <div className="h-10 w-10 border-4 border-[--surface-muted] border-t-[--brand-primary] rounded-full animate-spin mx-auto" />
+            <p className="text-[10px] font-black text-[--text-muted] uppercase tracking-widest">Loading Locations...</p>
+          </div>
         ) : locations.length === 0 ? (
-          <p className="text-gray-500">No locations found.</p>
+          <div className="p-20 text-center bg-white rounded-3xl border border-[--border]">
+            <div className="h-12 w-12 bg-[--surface-muted] rounded-2xl flex items-center justify-center mx-auto mb-4 border border-[--border]">
+              <MapPin className="w-6 h-6 text-[--text-muted]" />
+            </div>
+            <p className="text-[11px] font-black text-[--text-muted] uppercase tracking-widest">No locations found</p>
+          </div>
         ) : (
           locations.map(loc => (
-            <div key={loc.id} className="bg-white dark:bg-[#16191f] rounded-xl border border-gray-200 dark:border-gray-800 p-4 flex items-center justify-between shadow-sm">
-              <div className="flex items-center gap-4">
-                <div className="bg-gray-100 dark:bg-gray-800 p-2.5 rounded-lg text-gray-500 dark:text-gray-400">
+            <div key={loc.id} className="bg-white rounded-3xl border border-[--border] p-6 flex items-center justify-between shadow-sm hover:shadow-md transition-shadow duration-300 group">
+              <div className="flex items-center gap-5">
+                <div className="h-12 w-12 bg-[--surface-muted] rounded-2xl flex items-center justify-center text-[--text-muted] group-hover:text-[--brand-primary] transition-colors border border-[--border]">
                   <Store className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-gray-900 dark:text-white">{loc.name}</h3>
-                  {loc.address && <p className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1.5 mt-0.5"><MapPin className="w-3 h-3" /> {loc.address}</p>}
+                  <h3 className="font-black text-[--text-primary] tracking-tight">{loc.name}</h3>
+                  {loc.address && (
+                    <p className="text-[11px] font-bold text-[--text-muted] flex items-center gap-1.5 mt-1">
+                      <MapPin className="w-3 h-3" /> {loc.address}
+                    </p>
+                  )}
                 </div>
               </div>
               <RoleGate allowed={['owner']}>
-                <button onClick={() => handleDelete(loc.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition">
+                <button onClick={() => handleDelete(loc.id)} className="p-2.5 text-[--text-muted] hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all duration-300">
                   <Trash className="w-4 h-4" />
                 </button>
               </RoleGate>

@@ -1,110 +1,120 @@
+import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
-import { NextResponse } from 'next/server'
-import anthropic from '@/lib/ai/anthropic'
-import { buildSystemPrompt } from '@/lib/ai/systemPrompt'
-import { getConversationHistory, saveMessage } from '@/lib/ai/conversationHistory'
-import { parseClaudeResponse } from '@/lib/ai/parseResponse'
-import { rateLimit } from '@/lib/rateLimit'
+import { processMessage } from '@/lib/ai/processMessage'
+import { executeAction } from '@/lib/ai/executeAction'
+import { executeQuery, formatQueryResponse } from '@/lib/ai/executeQuery'
+import { saveMemoryCandidates } from '@/lib/db/memories'
+import { saveChatMessage } from '@/lib/db/chat'
 
-export async function POST(request: Request) {
+export async function POST(req: NextRequest) {
     try {
-        const { message, transactionId } = await request.json()
-        if (!message) return NextResponse.json({ error: 'Message is required' }, { status: 400 })
+        const { message, conversationHistory = [], businessId, confirmed, pendingAction } = await req.json()
 
         const cookieStore = await cookies()
         const supabase = createServerClient(
             process.env.NEXT_PUBLIC_SUPABASE_URL!,
             process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
             {
-                cookies: {
-                    getAll() { return cookieStore.getAll() },
-                    setAll() { }
-                }
+                cookies: { getAll() { return cookieStore.getAll() }, setAll() { } }
             }
         )
 
-        const { data: { user }, error: authError } = await supabase.auth.getUser()
-        if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-        // Apply Rate Limiting (20 requests per minute)
-        const rateLimitResult = rateLimit(user.id, 20, 60 * 1000)
-        if (!rateLimitResult.success) {
-            return new Response('Rate limit exceeded. Please try again in a minute.', { status: 429 })
+        // Validate business access
+        const { data: member } = await supabase.from('business_members').select('id').eq('business_id', businessId).eq('user_id', user.id).single()
+        if (!member) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+        // --- PATH A: User is confirming a pending action ---
+        if (confirmed && pendingAction) {
+            const result = await executeAction(pendingAction, businessId, user.id)
+
+            // Save memory candidates from this confirmed transaction
+            if (pendingAction.memory_candidates?.length > 0) {
+                await saveMemoryCandidates(businessId, pendingAction.memory_candidates)
+            }
+
+            await saveChatMessage(businessId, user.id, 'assistant', result.successMessage, 'system')
+
+            return NextResponse.json({
+                type: 'action_complete',
+                message: result.successMessage,
+                proactive_insight: result.insight ?? null
+            })
         }
 
-        const { data: member } = await supabase
-            .from('business_members')
-            .select('business_id, role')
-            .eq('user_id', user.id)
-            .limit(1)
-            .single()
+        // --- PATH B: Processing a new user message ---
 
-        if (!member) return NextResponse.json({ error: 'No business found' }, { status: 403 })
-        const businessId = member.business_id
+        // Save the user message first
+        await saveChatMessage(businessId, user.id, 'user', message, 'text')
 
-        // 1. Save user message
-        await saveMessage(businessId, user.id, 'user', message, {}, transactionId)
+        // Process message through Groq LLM
+        const aiResponse = await processMessage(message, conversationHistory, businessId, user.id)
 
-        // 2. Fetch context & history
-        const systemPrompt = await buildSystemPrompt(businessId)
-        const history = await getConversationHistory(businessId, 20)
+        // Handle query intents — execute immediately, no confirmation needed
+        if (aiResponse.action.type === 'ANSWER_QUERY' ||
+            aiResponse.action.type === 'RUN_ANALYSIS' ||
+            aiResponse.action.type === 'GENERATE_REPORT' ||
+            (!aiResponse.action.type && aiResponse.query.type)) {
 
-        // Append new message for Claude
-        history.push({ role: 'user', content: message })
+            const queryResult = await executeQuery(aiResponse.query, businessId)
+            const fullResponse = formatQueryResponse(aiResponse.response_message, queryResult)
 
-        // 3. Setup Streaming Response
-        const encoder = new TextEncoder()
-        const stream = new TransformStream()
-        const writer = stream.writable.getWriter()
+            await saveChatMessage(businessId, user.id, 'assistant', fullResponse.text, 'text', { data: queryResult.data })
 
-            // Pass request to background to stream
-            ; (async () => {
-                let fullResponse = ''
+            return NextResponse.json({
+                type: 'query_response',
+                message: fullResponse.text,
+                data: queryResult.data,
+                response_format: fullResponse.format // 'text' | 'table' | 'chart'
+            })
+        }
 
-                try {
-                    const responseStream = await anthropic.messages.stream({
-                        model: 'claude-3-7-sonnet-20250219',
-                        max_tokens: 1024,
-                        system: systemPrompt,
-                        messages: history as any, // TS alignment
-                    })
+        // Handle clarification needed
+        if (aiResponse.needs_clarification || aiResponse.action.type === 'CLARIFY') {
+            const question = aiResponse.clarification_question || aiResponse.response_message || "Could you clarify that?"
+            await saveChatMessage(businessId, user.id, 'assistant', question, 'text')
+            return NextResponse.json({
+                type: 'clarification',
+                message: question,
+            })
+        }
 
-                    for await (const chunk of responseStream) {
-                        if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
-                            const text = chunk.delta.text
-                            fullResponse += text
-                            await writer.write(encoder.encode(text))
-                        }
-                    }
+        // Handle general chat (greetings, small talk)
+        if (aiResponse.action.type === 'GENERAL_CHAT' || !aiResponse.action.type) {
+            const text = aiResponse.response_message || "I'm Stoka! How can I help with your inventory today?"
+            await saveChatMessage(businessId, user.id, 'assistant', text, 'text')
+            return NextResponse.json({
+                type: 'general',
+                message: text,
+            })
+        }
 
-                    // When done streaming, parse and save
-                    const parsed = parseClaudeResponse(fullResponse)
-
-                    // Save assistant message structure
-                    if (parsed.success) {
-                        await saveMessage(businessId, user.id, 'assistant', fullResponse, parsed.data)
-                    } else {
-                        // Provide fallback validation in metadata
-                        await saveMessage(businessId, user.id, 'assistant', fullResponse, { error: 'Failed to parse JSON', raw: fullResponse })
-                    }
-
-                } catch (err) {
-                    console.error('Streaming error:', err)
-                    await writer.write(encoder.encode('\n\n[Error: Unable to connect to AI]'))
-                } finally {
-                    await writer.close()
-                }
-            })()
-
-        return new Response(stream.readable, {
-            headers: {
-                'Content-Type': 'text/plain; charset=utf-8',
-                'Cache-Control': 'no-cache, no-transform',
-            },
+        // Handle action intents — show confirmation card, wait for user to confirm
+        await saveChatMessage(businessId, user.id, 'assistant', aiResponse.response_message, 'confirmation_card', {
+            confirmation_card: aiResponse.confirmation_card,
+            pending_action: aiResponse.action,
+            memory_candidates: aiResponse.memory_candidates
         })
+
+        return NextResponse.json({
+            type: 'confirmation_required',
+            message: aiResponse.response_message,
+            intent_summary: aiResponse.intent_summary,
+            confirmation_card: aiResponse.confirmation_card,
+            pending_action: aiResponse.action,
+            memory_candidates: aiResponse.memory_candidates,
+            proactive_insight: aiResponse.proactive_insight?.show ? aiResponse.proactive_insight : null
+        })
+
     } catch (error: any) {
-        console.error('Chat API Error:', error)
-        return NextResponse.json({ error: error.message }, { status: 500 })
+        console.error('Chat API error:', error)
+        // Return 200 so the frontend shows the error as a chat message gracefully
+        return NextResponse.json({
+            type: 'error',
+            message: "I had a bit of trouble processing that just now. Could you try again?"
+        })
     }
 }

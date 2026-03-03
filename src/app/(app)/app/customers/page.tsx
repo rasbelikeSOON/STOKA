@@ -1,12 +1,14 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { Plus, Search } from 'lucide-react'
+import { Plus, Search, Users, Download, Filter } from 'lucide-react'
 import { ContactTable } from '@/components/contacts/ContactTable'
 import { ContactForm } from '@/components/contacts/ContactForm'
 import { RoleGate } from '@/components/auth/RoleGate'
 import { toast } from 'sonner'
 import { ContactFormValues } from '@/lib/validations/contact'
+import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
 
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<any[]>([])
@@ -70,47 +72,65 @@ export default function CustomersPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto pb-12">
-      <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+      <div className="mb-10 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Customers</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Manage your business clients and buyers</p>
+          <div className="flex items-center gap-2 text-[10px] font-black text-[--brand-primary] uppercase tracking-[0.2em] mb-3">
+            <Users className="w-3 h-3" />
+            Customer Database
+          </div>
+          <h1 className="text-4xl font-black text-[--text-primary] tracking-tight">Customers</h1>
+          <p className="mt-2 text-[--text-muted] font-medium max-w-xl text-sm leading-relaxed">
+            Manage your retail clients, wholesale buyers, and business relationships.
+            Keep track of purchase history and preferences.
+          </p>
         </div>
 
-        <RoleGate allowed={['owner', 'manager']}>
-          <button
-            onClick={() => { setEditingItem(null); setIsFormOpen(true); }}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition whitespace-nowrap"
-          >
-            <Plus className="w-4 h-4" />
-            Add Customer
-          </button>
-        </RoleGate>
+        <div className="flex items-center gap-3">
+          <Button variant="outline" className="h-12 px-6 bg-white border-[--border] text-[11px] font-black uppercase tracking-widest hidden md:flex">
+            <Download className="w-4 h-4 mr-2" />
+            Export CSV
+          </Button>
+          <RoleGate allowed={['owner', 'manager']}>
+            <Button
+              onClick={() => { setEditingItem(null); setIsFormOpen(true); }}
+              className="h-12 px-8 text-[11px] font-black uppercase tracking-widest shadow-lg shadow-[--brand-primary]/20"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Add Customer
+            </Button>
+          </RoleGate>
+        </div>
       </div>
 
-      <div className="mb-6">
-        <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+      <div className="mb-8 flex flex-col md:flex-row gap-4">
+        <div className="relative flex-1 group">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[--text-muted] group-focus-within:text-[--brand-primary] transition-colors" />
           <input
             type="text"
-            placeholder="Search customers..."
+            placeholder="Search customers by name, email or phone..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none text-gray-900 dark:text-white"
+            className="w-full pl-12 pr-6 py-4 bg-white border border-[--border] rounded-2xl text-sm font-bold focus:ring-4 focus:ring-[--brand-primary]/5 focus:border-[--brand-primary] outline-none transition-all placeholder:text-[--text-muted]/50"
           />
         </div>
+        <Button variant="outline" className="h-[58px] px-6 bg-white border-[--border]">
+          <Filter className="w-4 h-4" />
+        </Button>
       </div>
 
-      <ContactTable
-        data={customers}
-        loading={loading}
-        onEdit={(item) => { setEditingItem(item); setIsFormOpen(true); }}
-        onDelete={handleDelete}
-      />
+      <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+        <ContactTable
+          data={customers}
+          loading={loading}
+          onEdit={(item) => { setEditingItem(item); setIsFormOpen(true); }}
+          onDelete={handleDelete}
+        />
+      </div>
 
       {isFormOpen && (
         <ContactForm
-          title={editingItem ? "Edit Customer" : "Add Customer"}
+          title={editingItem ? "Update Profile" : "New Customer"}
           initialData={editingItem}
           onSave={handleSave}
           onCancel={() => { setIsFormOpen(false); setEditingItem(null); }}

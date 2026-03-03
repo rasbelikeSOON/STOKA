@@ -13,7 +13,7 @@ export function subscribeToChatMessages(businessId: string, onMessage: (payload:
                 table: 'chat_messages',
                 filter: `business_id=eq.${businessId}`
             },
-            (payload) => {
+            (payload: any) => {
                 onMessage(payload.new)
             }
         )

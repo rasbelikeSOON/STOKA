@@ -1,0 +1,1 @@
+﻿.next/dev/types/validator.ts(458,39): error TS2307: Cannot find module '../../../src/app/api/chat/confirm/route.js' or its corresponding type declarations.

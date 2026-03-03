@@ -1,49 +1,86 @@
 'use client'
 
-import { useState } from 'react'
-import { Send, Loader2 } from 'lucide-react'
-import { useChatStore } from '@/stores/useChatStore'
+import { useState, useRef, useEffect } from 'react'
+import { Send, Loader2, Paperclip, Mic } from 'lucide-react'
+import { cn } from '@/lib/utils/cn'
 
-export function ChatInput({ onSendMessage }: { onSendMessage: (msg: string) => void }) {
+export function ChatInput({
+    onSendMessage,
+    disabled = false
+}: {
+    onSendMessage: (msg: string) => void,
+    disabled?: boolean
+}) {
     const [input, setInput] = useState('')
-    const { isStreaming } = useChatStore()
+    const [isStreaming, setIsStreaming] = useState(false) // Local sync or props? useChatStore is better
+    const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault()
-        if (!input.trim() || isStreaming) return
+    useEffect(() => {
+        if (textareaRef.current) {
+            textareaRef.current.style.height = 'auto'
+            textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`
+        }
+    }, [input])
+
+    const handleSubmit = (e?: React.FormEvent) => {
+        e?.preventDefault()
+        if (!input.trim() || disabled) return
         onSendMessage(input)
         setInput('')
+        if (textareaRef.current) {
+            textareaRef.current.style.height = 'auto'
+        }
     }
 
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault()
+            handleSubmit()
+        }
+    }
+
+    const placeholder = disabled ? "Neural link establishing..." : "Say something like 'Sold 2 Shampoos'..."
+
     return (
-        <form onSubmit={handleSubmit} className="border-t border-gray-200 bg-white p-4 pb-safe flex items-end relative">
-            <div className="flex-1 rounded-2xl border border-gray-300 bg-gray-50 focus-within:ring-1 focus-within:ring-blue-500 focus-within:border-blue-500 overflow-hidden flex shadow-sm items-end pr-2 transition-shadow">
+        <form
+            onSubmit={handleSubmit}
+            className="relative group animate-in slide-in-from-bottom-4 duration-700"
+        >
+            <div className="relative flex items-end gap-2 p-2 bg-white border border-[--border] rounded-[24px] shadow-xl shadow-blue-500/5 focus-within:border-[#1D4ED8] focus-within:ring-4 focus-within:ring-[#1D4ED8]/5 transition-all duration-300">
+                <button
+                    type="button"
+                    className="p-3 text-[--text-muted] hover:text-[#1D4ED8] hover:bg-blue-50 rounded-2xl transition-all"
+                >
+                    <Paperclip className="h-5 w-5" />
+                </button>
                 <textarea
+                    ref={textareaRef}
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    placeholder="Type a message or describe a transaction..."
-                    className="w-full max-h-32 min-h-[44px] py-3 px-4 bg-transparent border-none appearance-none resize-none focus:outline-none focus:ring-0 text-sm"
+                    onKeyDown={handleKeyDown}
+                    placeholder={placeholder}
                     rows={1}
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault()
-                            handleSubmit(e)
-                        }
-                    }}
+                    disabled={disabled}
+                    className="flex-1 bg-transparent border-none focus:ring-0 text-[15px] font-bold text-[--text-primary] py-3 px-2 resize-none max-h-40 placeholder:text-[--text-muted] placeholder:font-medium"
                 />
-                <div className="py-2">
-                    <button
-                        type="submit"
-                        disabled={!input.trim() || isStreaming}
-                        className="inline-flex items-center justify-center rounded-full h-8 w-8 text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 transition-colors"
-                    >
-                        {isStreaming ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                            <Send className="h-4 w-4 ml-[-2px] mt-[1px]" />
-                        )}
-                    </button>
-                </div>
+                <button
+                    type="button"
+                    className="p-3 text-[--text-muted] hover:text-[#1D4ED8] hover:bg-blue-50 rounded-2xl transition-all"
+                >
+                    <Mic className="h-5 w-5" />
+                </button>
+                <button
+                    type="submit"
+                    disabled={!input.trim() || disabled}
+                    className={cn(
+                        "p-3 rounded-2xl transition-all duration-300 shadow-lg",
+                        input.trim() && !disabled
+                            ? "bg-[#1D4ED8] text-white shadow-blue-500/30 scale-100 hover:scale-105"
+                            : "bg-gray-100 text-gray-400 scale-95 opacity-50"
+                    )}
+                >
+                    <Send className="h-5 w-5" />
+                </button>
             </div>
         </form>
     )

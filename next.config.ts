@@ -10,7 +10,16 @@ const withPWA = withPWAInit({
 });
 
 const nextConfig: NextConfig = {
-  turbopack: {}
+  turbopack: {},
+  async redirects() {
+    return [
+      {
+        source: '/login',
+        destination: '/signin',
+        permanent: true,
+      },
+    ]
+  },
 };
 
 export default withPWA(nextConfig);

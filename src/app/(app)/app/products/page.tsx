@@ -5,8 +5,9 @@ import { Plus, Search, Filter } from 'lucide-react'
 import Link from 'next/link'
 import { ProductTable } from '@/components/products/ProductTable'
 import { ProductCard } from '@/components/products/ProductCard'
-import { useAuthStore } from '@/stores/useAuthStore'
 import { RoleGate } from '@/components/auth/RoleGate'
+import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
 
 export default function ProductsPage() {
   const [products, setProducts] = useState<any[]>([])
@@ -60,39 +61,37 @@ export default function ProductsPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto">
-      <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+      <div className="mb-10 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Products</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Manage your catalog, variants, and stock levels</p>
+          <h1 className="text-3xl font-black text-[--text-primary] tracking-tight">Products</h1>
+          <p className="mt-1 text-[--text-muted] font-medium">Manage your catalog, variants, and stock levels</p>
         </div>
 
         <RoleGate allowed={['owner', 'manager']}>
-          <Link
-            href="/app/products/new"
-            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition whitespace-nowrap"
-          >
-            <Plus className="w-4 h-4" />
-            Add Product
+          <Link href="/app/products/new">
+            <Button className="h-11 px-6 shadow-lg shadow-[--brand-primary]/20">
+              <Plus className="w-4 h-4 mr-2" />
+              Add Product
+            </Button>
           </Link>
         </RoleGate>
       </div>
 
-      <div className="mb-6 flex flex-col sm:flex-row gap-4">
+      <div className="mb-8 flex flex-col sm:flex-row gap-4">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search products by name..."
+          <Input
+            placeholder="Search products by name or category..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none text-gray-900 dark:text-white"
+            className="pl-11 h-12 bg-white"
           />
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
         </div>
-        <button className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-white dark:bg-[#16191f] border border-gray-200 dark:border-gray-800 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition">
-          <Filter className="w-4 h-4" />
-          Filters
-        </button>
+        <Button variant="outline" className="h-12 px-6 bg-white border-[--border]">
+          <Filter className="w-4 h-4 mr-2" />
+          More Filters
+        </Button>
       </div>
 
       {/* Desktop View */}
@@ -106,20 +105,25 @@ export default function ProductsPage() {
           <ProductCard key={p.id} product={p} />
         ))}
         {products.length === 0 && !loading && (
-          <div className="p-8 text-center text-gray-500 dark:text-gray-400 bg-white dark:bg-[#16191f] rounded-xl border border-gray-200 dark:border-gray-800">
-            No products found.
+          <div className="p-12 text-center text-[--text-muted] bg-white rounded-2xl border border-[--border] shadow-sm">
+            <div className="h-12 w-12 bg-[--surface-muted] text-[--brand-primary] rounded-xl flex items-center justify-center mx-auto mb-4">
+              <Plus className="w-6 h-6" />
+            </div>
+            <p className="font-bold text-lg text-[--text-primary]">No products found</p>
+            <p className="text-sm">Start by adding a new product to your inventory.</p>
           </div>
         )}
       </div>
 
       {hasMore && !loading && (
-        <div className="mt-6 flex justify-center">
-          <button
+        <div className="mt-10 flex justify-center">
+          <Button
+            variant="ghost"
             onClick={() => fetchProducts(false)}
-            className="px-4 py-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
+            className="text-[--brand-primary] font-bold"
           >
-            Load More
-          </button>
+            Load More Products
+          </Button>
         </div>
       )}
     </div>

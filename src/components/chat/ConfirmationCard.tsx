@@ -1,117 +1,131 @@
 'use client'
 
 import { useState } from 'react'
-import { Check, X, Loader2 } from 'lucide-react'
+import { Card } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import {
+    ShoppingCart,
+    ArrowUpRight,
+    ArrowDownLeft,
+    RefreshCcw,
+    AlertCircle,
+    CheckCircle2,
+    Package
+} from 'lucide-react'
+import { cn } from '@/lib/utils/cn'
 import { toast } from 'sonner'
 
-export function ConfirmationCard({
-    data,
-    messageId,
-    onConfirm
-}: {
-    data: any,
-    messageId: string,
-    onConfirm?: () => void
-}) {
-    const [status, setStatus] = useState<'pending' | 'confirmed' | 'cancelled'>('pending')
+interface ConfirmationCardProps {
+    data: any // The aiResponse metadata blob containing confirmation_card block
+    onConfirm: (data: any) => void
+}
+
+export function ConfirmationCard({ data, onConfirm }: ConfirmationCardProps) {
+    const [isConfirmed, setIsConfirmed] = useState(false)
     const [isLoading, setIsLoading] = useState(false)
 
-    // Don't render if there isn't actually a transaction
-    if (!data || !data.transaction || !data.transaction.items) return null
+    // The new LLM schema returns everything nicely packaged in 'confirmation_card'
+    const card = data.confirmation_card || {}
+    const actionType = data.pending_action?.type || 'UNKNOWN'
 
-    const t = data.transaction
+    const isSale = actionType === 'RECORD_SALE'
+    const isPurchase = actionType === 'RECORD_PURCHASE'
 
     const handleConfirm = async () => {
         setIsLoading(true)
         try {
-            const response = await fetch('/api/chat/confirm', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ parsedData: data, messageId })
-            })
-            const result = await response.json()
-
-            if (!response.ok) throw new Error(result.error)
-
-            setStatus('confirmed')
-            toast.success('Transaction logged successfully!')
-            if (onConfirm) onConfirm()
-        } catch (err: any) {
-            toast.error(err.message || 'Failed to confirm transaction')
+            await onConfirm(data)
+            setIsConfirmed(true)
+        } catch (error) {
+            console.error(error)
         } finally {
             setIsLoading(false)
         }
     }
 
-    const handleCancel = () => {
-        setStatus('cancelled')
-        toast.info('Transaction cancelled')
+    if (isConfirmed) {
+        return (
+            <Card className="bg-emerald-50 border-emerald-100 p-4 flex items-center gap-3 animate-in zoom-in duration-300">
+                <div className="h-10 w-10 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0">
+                    <CheckCircle2 className="h-6 w-6" />
+                </div>
+                <div>
+                    <h4 className="font-bold text-emerald-900">Action Confirmed</h4>
+                    <p className="text-sm text-emerald-700">Database updated successfully.</p>
+                </div>
+            </Card>
+        )
     }
 
     return (
-        <div className="w-full mt-2 rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden text-sm">
-            <div className={`px-4 py-2 flex items-center justify-between border-b border-gray-100 ${t.type === 'purchase' ? 'bg-blue-50 text-blue-700' :
-                    t.type === 'sale' ? 'bg-green-50 text-green-700' :
-                        t.type === 'return' ? 'bg-amber-50 text-amber-700' :
-                            'bg-gray-50 text-gray-700'
-                }`}>
-                <span className="font-semibold capitalize">{t.type} Pending</span>
-                <span className="font-bold">{t.total_amount?.toLocaleString(undefined, { style: 'currency', currency: 'NGN' })}</span>
+        <Card className="p-0 overflow-hidden shadow-lg border-[--border] bg-white animate-in fade-in slide-in-from-left-4 duration-500">
+            {/* Header */}
+            <div className={cn(
+                "px-4 py-3 flex items-center justify-between border-b",
+                isSale ? "bg-emerald-50 border-emerald-100" :
+                    isPurchase ? "bg-blue-50 border-blue-100" : "bg-gray-50 border-gray-100"
+            )}>
+                <div className="flex items-center gap-2">
+                    {isSale ? <ArrowUpRight className="h-4 w-4 text-emerald-600" /> :
+                        isPurchase ? <ShoppingCart className="h-4 w-4 text-blue-600" /> :
+                            <RefreshCcw className="h-4 w-4 text-gray-600" />}
+                    <span className={cn(
+                        "text-xs font-bold uppercase tracking-wider",
+                        isSale ? "text-emerald-700" : isPurchase ? "text-blue-700" : "text-gray-700"
+                    )}>
+                        {card.title || 'Confirm Action'}
+                    </span>
+                </div>
             </div>
 
-            <div className="p-4 space-y-3">
-                {t.supplier_name && (
-                    <div className="flex justify-between text-gray-600"><span className="text-gray-400">Supplier</span> <span>{t.supplier_name}</span></div>
-                )}
-                {t.customer_name && (
-                    <div className="flex justify-between text-gray-600"><span className="text-gray-400">Customer</span> <span>{t.customer_name}</span></div>
-                )}
-
-                <div className="border-t border-gray-100 pt-2 pb-1 text-gray-400 font-medium text-xs uppercase tracking-wider">Items</div>
-                <ul className="space-y-2">
-                    {t.items.map((item: any, i: number) => (
-                        <li key={i} className="flex justify-between items-start text-gray-800">
-                            <div>
-                                <span className="font-medium">{item.product_name}</span>
-                                {item.variant_descriptor && <span className="ml-1 text-gray-500 text-xs text-wrap">- {item.variant_descriptor}</span>}
-                                {item.is_new_product && <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-800">New</span>}
-                            </div>
-                            <div className="text-right pl-4 whitespace-nowrap">
-                                <div className="text-gray-900">{item.quantity} x {item.unit_price}</div>
-                            </div>
-                        </li>
-                    ))}
-                </ul>
-            </div>
-
-            <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 flex gap-3">
-                {status === 'pending' ? (
-                    <>
-                        <button
-                            onClick={handleConfirm}
-                            disabled={isLoading}
-                            className="flex-1 bg-gray-900 text-white py-2 rounded-lg font-medium hover:bg-gray-800 transition flex items-center justify-center gap-2"
-                        >
-                            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Check className="h-4 w-4" /> Confirm</>}
-                        </button>
-                        <button
-                            onClick={handleCancel}
-                            disabled={isLoading}
-                            className="flex-1 bg-white text-gray-700 border border-gray-300 py-2 rounded-lg font-medium hover:bg-gray-50 transition flex items-center justify-center gap-2"
-                        >
-                            <X className="h-4 w-4" /> Cancel
-                        </button>
-                    </>
-                ) : status === 'confirmed' ? (
-                    <div className="w-full py-1.5 flex items-center justify-center gap-2 text-green-600 font-medium bg-green-50 rounded-lg border border-green-200">
-                        <Check className="h-5 w-5" /> Confirmed & Saved
+            {/* Body */}
+            <div className="p-4 space-y-4">
+                {card.summary_lines?.map((line: any, idx: number) => (
+                    <div key={idx} className={cn(
+                        "flex items-center justify-between py-2",
+                        idx !== card.summary_lines.length - 1 ? "border-b border-dashed border-gray-100" : ""
+                    )}>
+                        <span className="text-sm text-[--text-muted] font-medium">{line.label}</span>
+                        <span className="font-bold text-[--text-primary] text-right">{line.value}</span>
                     </div>
-                ) : (
-                    <div className="w-full py-1.5 flex items-center justify-center gap-2 text-gray-500 font-medium bg-gray-100 rounded-lg">
-                        <X className="h-5 w-5" /> Cancelled
+                ))}
+
+                {card.uncertainty_flags?.length > 0 && (
+                    <div className="mt-4 p-3 bg-yellow-50 border border-yellow-100 rounded-lg flex items-start gap-2">
+                        <AlertCircle className="h-4 w-4 text-yellow-600 shrink-0 mt-0.5" />
+                        <div className="text-xs text-yellow-800 space-y-1">
+                            {card.uncertainty_flags.map((flag: string, i: number) => <p key={i}>{flag}</p>)}
+                        </div>
                     </div>
                 )}
             </div>
-        </div>
+
+            {/* Footer */}
+            <div className="p-3 bg-gray-50 border-t flex gap-2">
+                <Button
+                    variant="outline"
+                    className="flex-1 h-10 bg-white border-gray-200 text-gray-700 font-bold hover:bg-gray-50 hover:text-blue-600 transition-all active:scale-95"
+                    onClick={() => toast.info('Feature coming soon: Refine details in the input box!')}
+                    disabled={isLoading}
+                >
+                    {card.cancel_button_label || 'Edit'}
+                </Button>
+                <Button
+                    className={cn(
+                        "flex-[2] h-10 shadow-lg font-black text-white uppercase tracking-tighter active:scale-[0.98] transition-all",
+                        isSale ? "bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800" : "bg-[#1D4ED8] hover:bg-blue-700 active:bg-blue-800"
+                    )}
+                    onClick={handleConfirm}
+                    disabled={isLoading}
+                >
+                    {isLoading ? (
+                        <span className="flex items-center gap-2">
+                            <span className="h-3 w-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            Processing...
+                        </span>
+                    ) : (card.confirm_button_label || 'Confirm Action')}
+                </Button>
+            </div>
+        </Card>
     )
 }

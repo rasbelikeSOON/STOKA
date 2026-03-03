@@ -6,6 +6,8 @@ import Link from 'next/link'
 import { TransactionTable } from '@/components/transactions/TransactionTable'
 import { RoleGate } from '@/components/auth/RoleGate'
 import { exportToCSV } from '@/lib/utils/export'
+import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
 
 export default function TransactionsPage() {
   const [txs, setTxs] = useState<any[]>([])
@@ -41,28 +43,28 @@ export default function TransactionsPage() {
   }, []) // Initial fetch
 
   return (
-    <div className="max-w-6xl mx-auto pb-12">
-      <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+      <div className="mb-10 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Transactions</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">View sales, purchases, and other stock movements</p>
+          <h1 className="text-3xl font-black text-[--text-primary] tracking-tight">Transactions</h1>
+          <p className="mt-1 text-[--text-muted] font-medium">View sales, purchases, and other stock movements</p>
         </div>
 
         <div className="flex items-center gap-3">
-          <button
+          <Button
+            variant="outline"
             onClick={() => exportToCSV(txs, `stoka-transactions-${new Date().toISOString().split('T')[0]}`)}
-            className="hidden sm:inline-flex items-center justify-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 font-medium transition"
+            className="hidden sm:inline-flex h-11 px-6 bg-white border-[--border]"
           >
-            <Download className="w-4 h-4" />
+            <Download className="w-4 h-4 mr-2" />
             Export CSV
-          </button>
+          </Button>
           <RoleGate allowed={['owner', 'manager']}>
-            <Link
-              href="/app/transactions/new"
-              className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition whitespace-nowrap"
-            >
-              <Plus className="w-4 h-4" />
-              Manual Entry
+            <Link href="/app/transactions/new">
+              <Button className="h-11 px-6 shadow-lg shadow-[--brand-primary]/20">
+                <Plus className="w-4 h-4 mr-2" />
+                Manual Entry
+              </Button>
             </Link>
           </RoleGate>
         </div>
@@ -71,13 +73,14 @@ export default function TransactionsPage() {
       <TransactionTable data={txs} loading={loading} />
 
       {hasMore && !loading && (
-        <div className="mt-6 flex justify-center">
-          <button
+        <div className="mt-10 flex justify-center">
+          <Button
+            variant="ghost"
             onClick={() => fetchTxs(false)}
-            className="px-4 py-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
+            className="text-[--brand-primary] font-bold"
           >
-            Load More Previous
-          </button>
+            Load Older Transactions
+          </Button>
         </div>
       )}
     </div>

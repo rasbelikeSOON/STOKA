@@ -22,7 +22,7 @@ export default function InvitePage() {
 
                 if (!user) {
                     // For a real app, we would preserve the token somewhere logic could read after auth.
-                    return router.push(`/signup?invite=${token}`)
+                    return router.push(`/register?invite=${token}`)
                 }
 
                 const response = await fetch('/api/invitations/accept', {

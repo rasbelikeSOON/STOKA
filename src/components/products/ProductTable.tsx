@@ -19,10 +19,16 @@ export function ProductTable({ data, loading, onDelete }: { data: any[], loading
             accessorKey: 'name',
             header: 'Product Name',
             cell: (info: any) => (
-                <div className="font-medium text-gray-900 dark:text-gray-100">
-                    <Link href={`/app/products/${info.row.original.id}`} className="hover:text-blue-600 dark:hover:text-blue-400">
+                <div className="flex flex-col">
+                    <Link
+                        href={`/app/products/${info.row.original.id}`}
+                        className="font-bold text-[--text-primary] hover:text-[--brand-primary] transition-colors leading-tight"
+                    >
                         {info.getValue()}
                     </Link>
+                    <span className="text-[10px] text-[--text-muted] font-medium uppercase tracking-tight mt-0.5">
+                        ID: {info.row.original.id.slice(0, 8)}
+                    </span>
                 </div>
             )
         },
@@ -30,7 +36,7 @@ export function ProductTable({ data, loading, onDelete }: { data: any[], loading
             accessorKey: 'category',
             header: 'Category',
             cell: (info: any) => (
-                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-300">
+                <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-[11px] font-bold bg-[--surface-muted] text-[--brand-primary] border border-[--brand-primary]/10 uppercase tracking-wide">
                     {info.getValue() || 'Uncategorized'}
                 </span>
             )
@@ -38,14 +44,18 @@ export function ProductTable({ data, loading, onDelete }: { data: any[], loading
         {
             accessorKey: 'priceRange',
             header: 'Price Range',
-            cell: (info: any) => <div className="text-gray-500 dark:text-gray-400">{info.getValue()}</div>
+            cell: (info: any) => (
+                <div className="font-bold text-[--text-primary]">
+                    {info.getValue() || '₦0.00'}
+                </div>
+            )
         },
         {
             accessorKey: 'totalStock',
             header: 'Total Stock',
             cell: (info: any) => (
-                <div className="flex items-center gap-2">
-                    <span className="text-gray-900 dark:text-white font-medium">{info.getValue()}</span>
+                <div className="flex items-center gap-3">
+                    <span className="text-[--text-primary] font-black text-base">{info.getValue()}</span>
                     <StockBadge quantity={info.getValue()} />
                 </div>
             )
@@ -61,21 +71,25 @@ export function ProductTable({ data, loading, onDelete }: { data: any[], loading
                         <button
                             onClick={() => setOpenMenuId(isOpen ? null : id)}
                             onBlur={() => setTimeout(() => setOpenMenuId(null), 200)}
-                            className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+                            className="p-2 text-gray-400 hover:text-[--brand-primary] rounded-xl hover:bg-[--surface-muted] transition-all"
                         >
                             <MoreHorizontal className="w-5 h-5" />
                         </button>
 
                         {isOpen && (
-                            <div className="absolute right-0 top-full mt-1 w-36 bg-white dark:bg-gray-800 rounded-md shadow-lg border border-gray-100 dark:border-gray-700 z-50 py-1 font-medium text-sm">
-                                <Link href={`/app/products/${id}`} className="w-full flex items-center gap-2 px-3 py-1.5 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                                    <Eye className="w-4 h-4" /> View Detail
+                            <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl shadow-2xl border border-[--border] z-50 py-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                                <Link href={`/app/products/${id}`} className="flex items-center gap-3 px-4 py-2.5 text-sm font-bold text-[--text-secondary] hover:bg-[--surface-muted] hover:text-[--brand-primary] transition-colors">
+                                    <Eye className="w-4 h-4" /> View Details
                                 </Link>
-                                <Link href={`/app/products/${id}/edit`} className="w-full flex items-center gap-2 px-3 py-1.5 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                <Link href={`/app/products/${id}/edit`} className="flex items-center gap-3 px-4 py-2.5 text-sm font-bold text-[--text-secondary] hover:bg-[--surface-muted] hover:text-[--brand-primary] transition-colors">
                                     <Edit className="w-4 h-4" /> Edit Product
                                 </Link>
-                                <button onClick={() => onDelete(id)} className="w-full flex items-center gap-2 px-3 py-1.5 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 text-left">
-                                    <Trash className="w-4 h-4" /> Delete
+                                <div className="mx-2 my-1 border-t border-[--border]" />
+                                <button
+                                    onClick={() => onDelete(id)}
+                                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-bold text-red-600 hover:bg-red-50 transition-colors"
+                                >
+                                    <Trash className="w-4 h-4" /> Delete Product
                                 </button>
                             </div>
                         )}
@@ -92,42 +106,51 @@ export function ProductTable({ data, loading, onDelete }: { data: any[], loading
     })
 
     if (loading && data.length === 0) {
-        return <div className="p-8 text-center text-gray-500 dark:text-gray-400 animate-pulse">Loading products...</div>
+        return (
+            <div className="p-12 text-center text-[--text-muted] bg-white rounded-2xl border border-[--border] shadow-sm animate-pulse">
+                Establishing data link...
+            </div>
+        )
     }
 
     return (
-        <div className="overflow-x-auto text-sm bg-white dark:bg-[#0f1115] rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm">
-            <table className="w-full text-left border-collapse">
-                <thead className="bg-gray-50 dark:bg-[#16191f]">
-                    {table.getHeaderGroups().map(headerGroup => (
-                        <tr key={headerGroup.id} className="border-b border-gray-200 dark:border-gray-800">
-                            {headerGroup.headers.map(header => (
-                                <th key={header.id} className="py-3 px-4 font-medium text-gray-600 dark:text-gray-400">
-                                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                                </th>
-                            ))}
-                        </tr>
-                    ))}
-                </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                    {table.getRowModel().rows.map(row => (
-                        <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
-                            {row.getVisibleCells().map(cell => (
-                                <td key={cell.id} className="py-3 px-4 whitespace-nowrap">
-                                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+        <div className="bg-white rounded-2xl border border-[--border] shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                    <thead className="bg-[--surface-muted]/30 border-b border-[--border]">
+                        {table.getHeaderGroups().map(headerGroup => (
+                            <tr key={headerGroup.id}>
+                                {headerGroup.headers.map(header => (
+                                    <th key={header.id} className="py-4 px-6 text-[11px] font-black text-[--text-muted] uppercase tracking-widest">
+                                        {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                                    </th>
+                                ))}
+                            </tr>
+                        ))}
+                    </thead>
+                    <tbody className="divide-y divide-[--border]/50">
+                        {table.getRowModel().rows.map(row => (
+                            <tr key={row.id} className="group hover:bg-[--surface-muted]/10 transition-colors">
+                                {row.getVisibleCells().map(cell => (
+                                    <td key={cell.id} className="py-4 px-6 whitespace-nowrap">
+                                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                    </td>
+                                ))}
+                            </tr>
+                        ))}
+                        {data.length === 0 && !loading && (
+                            <tr>
+                                <td colSpan={columns.length} className="py-20 text-center text-[--text-muted]">
+                                    <div className="max-w-xs mx-auto">
+                                        <p className="font-bold text-[--text-primary] text-lg mb-1">Stock is empty</p>
+                                        <p className="text-sm">Your product catalog is currently waiting for entries.</p>
+                                    </div>
                                 </td>
-                            ))}
-                        </tr>
-                    ))}
-                    {data.length === 0 && !loading && (
-                        <tr>
-                            <td colSpan={columns.length} className="py-12 text-center text-gray-500 dark:text-gray-400">
-                                No products found. Add your first product to get started.
-                            </td>
-                        </tr>
-                    )}
-                </tbody>
-            </table>
+                            </tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
         </div>
     )
 }

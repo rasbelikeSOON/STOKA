@@ -1,7 +1,10 @@
+import { AIResponse } from '@/lib/ai/schemas'
+
 export interface MessageItem {
-    id: string; // Used locally for mapping before saved
+    id: string;
     role: 'user' | 'assistant' | 'system';
     content: string;
     isStreaming?: boolean;
-    metadata?: any;
+    messageType?: 'text' | 'confirmation_card' | 'insight_card';
+    metadata?: any; // The raw JSON payload for the corresponding message type
 }

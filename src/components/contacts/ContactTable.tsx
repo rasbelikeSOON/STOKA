@@ -5,34 +5,57 @@ import {
     getCoreRowModel,
     useReactTable,
 } from '@tanstack/react-table'
-import { Edit, Trash } from 'lucide-react'
+import { Edit, Trash, User, Mail, Phone } from 'lucide-react'
 import { RoleGate } from '@/components/auth/RoleGate'
 
 export function ContactTable({ data, loading, onEdit, onDelete }: { data: any[], loading: boolean, onEdit: (c: any) => void, onDelete: (id: string) => void }) {
     const columns = [
         {
             accessorKey: 'name',
-            header: 'Name',
-            cell: (info: any) => <div className="font-medium text-gray-900 dark:text-gray-100">{info.getValue()}</div>
+            header: 'Contact',
+            cell: (info: any) => (
+                <div className="flex items-center gap-4">
+                    <div className="h-10 w-10 rounded-full bg-[--surface-muted] flex items-center justify-center border border-[--border]">
+                        <User className="w-5 h-5 text-[--text-muted]" />
+                    </div>
+                    <div className="flex flex-col">
+                        <span className="font-black text-[--text-primary] tracking-tight">{info.getValue()}</span>
+                        <span className="text-[10px] font-bold text-[--text-muted] uppercase tracking-widest leading-none mt-1">
+                            Individual
+                        </span>
+                    </div>
+                </div>
+            )
         },
         {
             accessorKey: 'email',
-            header: 'Email',
-            cell: (info: any) => <div className="text-gray-600 dark:text-gray-400">{info.getValue() || '-'}</div>
-        },
-        {
-            accessorKey: 'phone',
-            header: 'Phone',
-            cell: (info: any) => <div className="text-gray-600 dark:text-gray-400">{info.getValue() || '-'}</div>
+            header: 'Communication',
+            cell: (info: any) => (
+                <div className="space-y-1">
+                    {info.getValue() && (
+                        <div className="flex items-center gap-2 text-[11px] font-bold text-[--text-secondary]">
+                            <Mail className="w-3 h-3 text-[--brand-primary]" />
+                            {info.getValue()}
+                        </div>
+                    )}
+                    {info.row.original.phone && (
+                        <div className="flex items-center gap-2 text-[11px] font-bold text-[--text-muted]">
+                            <Phone className="w-3 h-3" />
+                            {info.row.original.phone}
+                        </div>
+                    )}
+                </div>
+            )
         },
         {
             id: 'actions',
+            header: '',
             cell: (info: any) => (
                 <div className="flex gap-2 justify-end">
                     <RoleGate allowed={['owner', 'manager']}>
                         <button
                             onClick={() => onEdit(info.row.original)}
-                            className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded transition"
+                            className="p-2 text-[--text-muted] hover:text-[--brand-primary] hover:bg-[--surface-muted] rounded-xl transition-all duration-300"
                         >
                             <Edit className="w-4 h-4" />
                         </button>
@@ -40,7 +63,7 @@ export function ContactTable({ data, loading, onEdit, onDelete }: { data: any[],
                     <RoleGate allowed={['owner']}>
                         <button
                             onClick={() => onDelete(info.row.original.id)}
-                            className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition"
+                            className="p-2 text-[--text-muted] hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all duration-300"
                         >
                             <Trash className="w-4 h-4" />
                         </button>
@@ -57,28 +80,33 @@ export function ContactTable({ data, loading, onEdit, onDelete }: { data: any[],
     })
 
     if (loading && data.length === 0) {
-        return <div className="p-8 text-center text-gray-500 dark:text-gray-400 animate-pulse">Loading...</div>
+        return (
+            <div className="p-20 text-center space-y-4">
+                <div className="h-10 w-10 border-4 border-[--surface-muted] border-t-[--brand-primary] rounded-full animate-spin mx-auto" />
+                <p className="text-[10px] font-black text-[--text-muted] uppercase tracking-widest">Fetching Records...</p>
+            </div>
+        )
     }
 
     return (
-        <div className="overflow-x-auto text-sm bg-white dark:bg-[#0f1115] rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm">
+        <div className="overflow-hidden border border-[--border] rounded-2xl bg-white shadow-sm">
             <table className="w-full text-left border-collapse">
-                <thead className="bg-gray-50 dark:bg-[#16191f]">
+                <thead>
                     {table.getHeaderGroups().map(headerGroup => (
-                        <tr key={headerGroup.id} className="border-b border-gray-200 dark:border-gray-800">
+                        <tr key={headerGroup.id} className="bg-[--surface-muted] border-b border-[--border]">
                             {headerGroup.headers.map(header => (
-                                <th key={header.id} className="py-3 px-4 font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                                <th key={header.id} className="py-4 px-6 text-[10px] font-black text-[--text-muted] uppercase tracking-widest">
                                     {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                                 </th>
                             ))}
                         </tr>
                     ))}
                 </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                <tbody className="divide-y divide-[--border]">
                     {table.getRowModel().rows.map(row => (
-                        <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
+                        <tr key={row.id} className="hover:bg-[--surface-muted]/30 transition-colors group">
                             {row.getVisibleCells().map(cell => (
-                                <td key={cell.id} className="py-3 px-4 whitespace-nowrap">
+                                <td key={cell.id} className="py-5 px-6 whitespace-nowrap">
                                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                                 </td>
                             ))}
@@ -86,8 +114,13 @@ export function ContactTable({ data, loading, onEdit, onDelete }: { data: any[],
                     ))}
                     {data.length === 0 && !loading && (
                         <tr>
-                            <td colSpan={columns.length} className="py-12 text-center text-gray-500 dark:text-gray-400">
-                                No records found.
+                            <td colSpan={columns.length} className="py-20 text-center">
+                                <div className="space-y-2">
+                                    <div className="h-12 w-12 bg-[--surface-muted] rounded-2xl flex items-center justify-center mx-auto mb-4 border border-[--border]">
+                                        <User className="w-6 h-6 text-[--text-muted]" />
+                                    </div>
+                                    <p className="text-[11px] font-black text-[--text-muted] uppercase tracking-widest">No matching contacts found</p>
+                                </div>
                             </td>
                         </tr>
                     )}

@@ -2,50 +2,68 @@
 
 import { MessageItem } from './types'
 import { ConfirmationCard } from './ConfirmationCard'
-import ReactMarkdown from 'react-markdown'
-import { Bot, User } from 'lucide-react'
+import { Bot, User, Lightbulb } from 'lucide-react'
+import { cn } from '@/lib/utils/cn'
 
-export function ChatMessage({ message, onConfirm }: { message: MessageItem, onConfirm?: () => void }) {
+export function ChatMessage({
+    message,
+    onConfirm
+}: {
+    message: MessageItem,
+    onConfirm?: (data: any) => void
+}) {
     const isUser = message.role === 'user'
 
     return (
-        <div className={`flex w-full ${isUser ? 'justify-end' : 'justify-start'}`}>
-            <div className={`flex max-w-[85%] ${isUser ? 'flex-row-reverse' : 'flex-row'} items-end gap-2`}>
-
-                <div className={`shrink-0 h-8 w-8 rounded-full flex items-center justify-center ${isUser ? 'bg-blue-600 text-white' : 'bg-gray-800 text-emerald-400'
-                    }`}>
-                    {isUser ? <User className="h-5 w-5" /> : <Bot className="h-5 w-5" />}
+        <div className={cn(
+            "flex w-full mb-6 animate-in fade-in slide-in-from-bottom-2 duration-300",
+            isUser ? "justify-end" : "justify-start"
+        )}>
+            <div className={cn(
+                "flex max-w-[85%] sm:max-w-[75%] gap-3",
+                isUser ? "flex-row-reverse" : "flex-row"
+            )}>
+                {/* Avatar */}
+                <div className={cn(
+                    "h-8 w-8 rounded-full flex items-center justify-center shrink-0 border mt-1",
+                    isUser
+                        ? "bg-[--brand-primary] border-[--brand-primary] text-white"
+                        : message.messageType === 'insight_card'
+                            ? "bg-amber-100 border-amber-200 text-amber-600"
+                            : "bg-white border-[--border] text-[--brand-primary]"
+                )}>
+                    {isUser ? <User className="h-4 w-4" /> : message.messageType === 'insight_card' ? <Lightbulb className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
                 </div>
 
-                <div className="flex flex-col gap-1 w-full relative">
+                {/* Content */}
+                <div className={cn(
+                    "flex flex-col gap-2",
+                    isUser ? "items-end" : "items-start",
+                    "w-full"
+                )}>
+                    {/* Text Bubble (Skip for pure confirmation cards if they have no text) */}
                     {message.content && (
-                        <div className={`px-4 py-3 rounded-2xl text-[15px] leading-relaxed relative ${isUser
-                            ? 'bg-blue-600 text-white rounded-br-sm'
-                            : 'bg-white border border-gray-200 text-gray-800 rounded-bl-sm shadow-sm'
-                            }`}>
-                            <div className={`prose prose-sm max-w-none ${isUser ? 'prose-invert' : 'prose-gray'}`}>
-                                <ReactMarkdown
-                                    components={{
-                                        p({ node, children, ...props }: any) { return <p className="mb-2 last:mb-0 text-inherit" {...props}>{children}</p> },
-                                        strong({ node, children, ...props }: any) { return <strong className={isUser ? "text-white opacity-90" : "font-semibold text-gray-900"} {...props}>{children}</strong> },
-                                    }}
-                                >
-                                    {message.content}
-                                </ReactMarkdown>
-                            </div>
+                        <div className={cn(
+                            "px-5 py-3.5 rounded-2xl text-[14px] font-bold leading-relaxed shadow-sm transition-all text-left",
+                            isUser
+                                ? "bg-[#1D4ED8] text-white rounded-tr-none shadow-blue-500/10"
+                                : message.messageType === 'insight_card'
+                                    ? "bg-amber-50 text-amber-900 border border-amber-200 rounded-tl-none"
+                                    : "bg-white border border-[--border] text-[--text-primary] rounded-tl-none"
+                        )}>
+                            <p>{message.content}</p>
                             {message.isStreaming && (
-                                <span className="inline-block w-1 h-[1em] ml-1 align-top bg-current animate-pulse" />
+                                <span className="inline-block w-1.5 h-1.5 ml-1 bg-current rounded-full animate-bounce" />
                             )}
                         </div>
                     )}
 
-                    {/* If there's parsed AI data, show the structured card format instead/below */}
-                    {message.metadata?.transaction && (
-                        <div className="mt-1 w-full max-w-sm">
+                    {/* Action Confirmation Card */}
+                    {message.messageType === 'confirmation_card' && message.metadata && (
+                        <div className="w-full min-w-[300px] mt-1">
                             <ConfirmationCard
                                 data={message.metadata}
-                                messageId={message.id}
-                                onConfirm={onConfirm}
+                                onConfirm={(data) => onConfirm?.(data)}
                             />
                         </div>
                     )}

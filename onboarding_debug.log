@@ -1,0 +1,6 @@
+[2026-03-02T16:48:40.683Z] User: undefined, Error: {"__isAuthError":true,"name":"AuthSessionMissingError","status":400}
+[2026-03-02T16:48:52.000Z] User: undefined, Error: {"__isAuthError":true,"name":"AuthSessionMissingError","status":400}
+[2026-03-02T16:49:27.105Z] User: undefined, Error: {"__isAuthError":true,"name":"AuthSessionMissingError","status":400}
+[2026-03-02T16:51:46.624Z] User: undefined, Error: {"__isAuthError":true,"name":"AuthSessionMissingError","status":400}
+[2026-03-02T16:52:08.065Z] User: undefined, Error: {"__isAuthError":true,"name":"AuthSessionMissingError","status":400}
+[2026-03-02T16:52:10.537Z] User: undefined, Error: {"__isAuthError":true,"name":"AuthSessionMissingError","status":400}

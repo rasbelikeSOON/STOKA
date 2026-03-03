@@ -1,26 +1,58 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Brand */
+  --brand-primary: #1D4ED8;        /* Deep Blue */
+  --brand-primary-hover: #1e40af;
+  --brand-accent: #10B981;         /* Emerald — success, money */
+  --brand-warning: #F59E0B;        /* Amber */
+  --brand-danger: #EF4444;         /* Red */
+  --brand-purple: #8B5CF6;         /* Transfers */
+  --brand-orange: #F97316;         /* Returns */
+
+  /* Surfaces */
+  --surface: #FFFFFF;
+  --surface-muted: #F9FAFB;
+  --surface-hover: #F3F4F6;
+  --border: #E5E7EB;
+  --border-strong: #D1D5DB;
+
+  /* Text */
+  --text-primary: #111827;
+  --text-secondary: #374151;
+  --text-muted: #6B7280;
+  --text-disabled: #9CA3AF;
+
+  /* Chat specific */
+  --chat-user: #1D4ED8;
+  --chat-ai: #F3F4F6;
+
+  /* Sidebar */
+  --sidebar-bg: #0F172A;           /* Very dark navy */
+  --sidebar-text: #94A3B8;
+  --sidebar-active: #1D4ED8;
+  --sidebar-active-text: #FFFFFF;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-brand-primary: var(--brand-primary);
+  --color-brand-accent: var(--brand-accent);
+  --color-brand-warning: var(--brand-warning);
+  --color-brand-danger: var(--brand-danger);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-text-primary: var(--text-primary);
+  --color-text-muted: var(--text-muted);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--surface);
+  color: var(--text-primary);
+  font-family: var(--font-inter), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.font-mono {
+  font-family: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }

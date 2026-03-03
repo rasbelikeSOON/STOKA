@@ -2,6 +2,7 @@
 
 import { motion } from 'framer-motion'
 import { Check } from 'lucide-react'
+import Link from 'next/link'
 
 const tiers = [
     {
@@ -86,14 +87,15 @@ export function Pricing() {
                                     </li>
                                 ))}
                             </ul>
-                            <button
+                            <Link
+                                href="/register"
                                 className={`mt-8 block w-full rounded-full px-3 py-3 text-center text-sm font-semibold leading-6 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 transition-all ${tier.highlight
                                     ? 'bg-blue-600 text-white shadow-sm hover:bg-blue-500'
                                     : 'bg-white text-gray-900 ring-1 ring-inset ring-gray-300 hover:ring-gray-400'
                                     }`}
                             >
                                 {tier.cta}
-                            </button>
+                            </Link>
                         </motion.div>
                     ))}
                 </div>
